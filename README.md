@@ -7,6 +7,10 @@ mempool in which post-quantum signature checks fit the validation budget, withou
 
 ## How it works
 
+**One seed, many keys.** The extension keeps one 24-word mnemonic and derives every key from it:
+ECDSA with BIP-32 (`m/44'/60'/a'/0/i`), Falcon and SPHINCS- from
+`HMAC-SHA512(seed, "agile-wallet/<label>/" ‖ a ‖ i)` with the labels `falcon-512` and `sphincs`.
+
 **Verifiers.** Every scheme has an `IVerifier` adapter in `contracts/src`:
 
 | Scheme | Verifies with |
