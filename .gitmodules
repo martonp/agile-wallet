@@ -7,3 +7,6 @@
 [submodule "contracts/lib/ETHFALCON"]
 	path = contracts/lib/ETHFALCON
 	url = https://github.com/ZKNoxHQ/ETHFALCON
+[submodule "contracts/lib/SPHINCS-"]
+	path = contracts/lib/SPHINCS-
+	url = https://github.com/nconsigny/SPHINCS-

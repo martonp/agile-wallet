@@ -5,6 +5,9 @@
   "lib/ETHFALCON": {
     "rev": "012e080"
   },
+  "lib/SPHINCS-": {
+    "rev": "4c76aaf"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.17.0",
