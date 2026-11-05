@@ -3,7 +3,10 @@ src = "src"
 out = "out"
 test = "test"
 libs = ["lib"]
-# Same compiler settings as the alt-mempool workshop, which were verified on the devnet.
-solc_version = "0.8.28"
+# No solc_version pin: @forshtat/hegota-support needs exactly 0.8.28 and ETHFALCON's falcon8 needs
+# 0.8.30 (its IR stack layout), so Foundry picks a compiler per file from the pragmas.
 via_ir = true
 evm_version = "cancun"
+# ETHFALCON's gas figures assume these optimizer settings.
+optimizer = true
+optimizer_runs = 1000000

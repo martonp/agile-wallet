@@ -2,6 +2,9 @@
   "../sidecar": {
     "rev": "2e22ff0a2898e69ea4bf5275bce1be8581a8582a"
   },
+  "lib/ETHFALCON": {
+    "rev": "012e080"
+  },
   "lib/forge-std": {
     "tag": {
       "name": "v1.17.0",

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.28;
+pragma solidity ^0.8.28;
 
 /// A stateless signature verifier for one scheme. The wallet calls one per enabled scheme.
 interface IVerifier {
