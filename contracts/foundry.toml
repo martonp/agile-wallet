@@ -1,0 +1,9 @@
+[profile.default]
+src = "src"
+out = "out"
+test = "test"
+libs = ["lib"]
+# Same compiler settings as the alt-mempool workshop, which were verified on the devnet.
+solc_version = "0.8.28"
+via_ir = true
+evm_version = "cancun"
