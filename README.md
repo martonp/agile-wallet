@@ -12,6 +12,7 @@ mempool in which post-quantum signature checks fit the validation budget, withou
 | Scheme | Verifies with |
 |---|---|
 | ECDSA | `ecrecover` |
+| Falcon-512 | ZKNOX `falcon8` |
 
 ## Repository
 

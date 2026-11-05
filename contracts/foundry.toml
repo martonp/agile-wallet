@@ -10,3 +10,6 @@ evm_version = "cancun"
 # ETHFALCON's gas figures assume these optimizer settings.
 optimizer = true
 optimizer_runs = 1000000
+# Tests sign with ZKNOX's falcon.js through node, and read the Keccak-f[1600] helper's runtime.
+ffi = true
+fs_permissions = [{ access = "read", path = "./lib/ETHFALCON/test" }]
