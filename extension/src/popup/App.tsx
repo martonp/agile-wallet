@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { hasWallet } from "../wallet/keyring";
 import { Onboarding } from "./screens/Onboarding";
 import { Unlock } from "./screens/Unlock";
 import { Account } from "./screens/Account";
@@ -7,12 +8,18 @@ import { ChangeSchemes } from "./screens/ChangeSchemes";
 
 type Screen = "onboarding" | "unlock" | "account" | "send" | "schemes";
 
-// Click-through UI only: screens run on mock data and no button touches keys or the network yet.
+// Account data is still mock; only wallet creation and the signing password are real so far.
 export function App() {
-  const [screen, setScreen] = useState<Screen>("onboarding");
+  const [screen, setScreen] = useState<Screen>();
   const toAccount = () => setScreen("account");
 
+  useEffect(() => {
+    hasWallet().then((has) => setScreen(has ? "account" : "onboarding"));
+  }, []);
+
   switch (screen) {
+    case undefined:
+      return null;
     case "onboarding":
       return <Onboarding onDone={toAccount} />;
     case "unlock":
