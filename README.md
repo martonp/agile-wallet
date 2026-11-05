@@ -13,6 +13,7 @@ mempool in which post-quantum signature checks fit the validation budget, withou
 |---|---|
 | ECDSA | `ecrecover` |
 | Falcon-512 | ZKNOX `falcon8` |
+| SPHINCS- C13 | nconsigny's `SphincsC13Asm` |
 
 ## Repository
 
