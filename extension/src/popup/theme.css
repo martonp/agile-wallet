@@ -1,0 +1,60 @@
+/* Lattice theme. Light by default; dark follows the browser's color scheme. */
+:root {
+  --bg: #f7f6fe;
+  --panel: #eeedfe;
+  --field: #ffffff;
+  --field-border: #cecbf6;
+  --line: #e2e0fa;
+  --text: #26215c;
+  --muted: #534ab7;
+  --faint: #7f77dd;
+  --primary-bg: #534ab7;
+  --primary-text: #ffffff;
+  --secondary-border: #afa9ec;
+  --secondary-text: #3c3489;
+  --switch-off: #cecbf6;
+  --warning-bg: #faeeda;
+  --warning-text: #633806;
+  --danger: #a32d2d;
+
+  --ecdsa-bg: #e6f1fb;
+  --ecdsa-text: #0c447c;
+  --falcon-bg: #e1f5ee;
+  --falcon-text: #085041;
+  --sphincs-bg: #faece7;
+  --sphincs-text: #712b13;
+  --chip-off-border: #afa9ec;
+  --chip-off-text: #7f77dd;
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16132e;
+    --panel: #211d45;
+    --field: #211d45;
+    --field-border: #3c3489;
+    --line: #2a2552;
+    --text: #eeedfe;
+    --muted: #afa9ec;
+    --faint: #7f77dd;
+    --primary-bg: #afa9ec;
+    --primary-text: #26215c;
+    --secondary-border: #3c3489;
+    --secondary-text: #cecbf6;
+    --switch-off: #3c3489;
+    --warning-bg: #412402;
+    --warning-text: #fac775;
+    --danger: #f09595;
+
+    --ecdsa-bg: #0c447c;
+    --ecdsa-text: #b5d4f4;
+    --falcon-bg: #085041;
+    --falcon-text: #9fe1cb;
+    --sphincs-bg: #712b13;
+    --sphincs-text: #f5c4b3;
+    --chip-off-border: #534ab7;
+    --chip-off-text: #7f77dd;
+  }
+}
