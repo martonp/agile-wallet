@@ -1,9 +1,65 @@
 import { useState } from "react";
 import { IconShieldLock } from "@tabler/icons-react";
 import { Header } from "../components/Header";
+import { createWallet } from "../../wallet/keyring";
+import { entropyToPhrase, generateEntropy, phraseToEntropy } from "../../wallet/mnemonic";
+
+const MIN_PASSWORD = 8;
+
+type Mode = "choose" | "create" | "import" | "backup";
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
-  const [mode, setMode] = useState<"choose" | "create" | "import">("choose");
+  const [mode, setMode] = useState<Mode>("choose");
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [phrase, setPhrase] = useState("");
+  const [entropy, setEntropy] = useState<Uint8Array>();
+  const [wroteItDown, setWroteItDown] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  function go(next: Mode) {
+    entropy?.fill(0);
+    setEntropy(undefined);
+    setError("");
+    setMode(next);
+  }
+
+  function passwordError() {
+    if (password.length < MIN_PASSWORD) return `Use at least ${MIN_PASSWORD} characters.`;
+    if (password !== confirm) return "Passwords don't match.";
+    return "";
+  }
+
+  async function save(secret: Uint8Array) {
+    setBusy(true);
+    try {
+      await createWallet(password, secret);
+      onDone();
+    } finally {
+      secret.fill(0);
+      setBusy(false);
+    }
+  }
+
+  function submit() {
+    const problem = passwordError();
+    if (problem) return setError(problem);
+    if (mode === "create") {
+      setEntropy(generateEntropy());
+      setError("");
+      setMode("backup");
+      return;
+    }
+    let imported: Uint8Array;
+    try {
+      imported = phraseToEntropy(phrase);
+    } catch {
+      return setError("That recovery phrase isn't valid. Check the words and their order.");
+    }
+    setPhrase("");
+    void save(imported);
+  }
 
   if (mode === "choose") {
     return (
@@ -13,11 +69,34 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </Header>
         <p className="hint">One recovery phrase protects your ECDSA, Falcon-512 and SPHINCS+ keys.</p>
         <div className="spacer" />
-        <button className="btn btn-primary" onClick={() => setMode("create")}>
+        <button className="btn btn-primary" onClick={() => go("create")}>
           Create new wallet
         </button>
-        <button className="btn btn-secondary" onClick={() => setMode("import")}>
+        <button className="btn btn-secondary" onClick={() => go("import")}>
           Import recovery phrase
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === "backup" && entropy) {
+    return (
+      <div className="screen">
+        <Header title="Your recovery phrase" onBack={() => go("create")} />
+        <p className="hint">Write these 24 words down in order and keep them offline. They're the only way to restore your wallet, and you won't see them again.</p>
+        <ol className="words">
+          {entropyToPhrase(entropy)
+            .split(" ")
+            .map((word, i) => (
+              <li key={i}>{word}</li>
+            ))}
+        </ol>
+        <label className="row hint" style={{ alignItems: "center" }}>
+          <input type="checkbox" checked={wroteItDown} onChange={(e) => setWroteItDown(e.target.checked)} />
+          I've written down my recovery phrase
+        </label>
+        <button className="btn btn-primary spacer" disabled={!wroteItDown || busy} onClick={() => save(entropy)}>
+          {busy ? "Encrypting…" : "Create wallet"}
         </button>
       </div>
     );
@@ -25,23 +104,24 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
   return (
     <div className="screen">
-      <Header title={mode === "create" ? "Create wallet" : "Import wallet"} onBack={() => setMode("choose")} />
+      <Header title={mode === "create" ? "Create wallet" : "Import wallet"} onBack={() => go("choose")} />
       {mode === "import" && (
         <div>
           <p className="label">Recovery phrase</p>
-          <textarea className="field" rows={3} placeholder="twelve or twenty-four words" />
+          <textarea className="field" rows={3} placeholder="twelve or twenty-four words" value={phrase} onChange={(e) => setPhrase(e.target.value)} />
         </div>
       )}
       <div>
         <p className="label">Password</p>
-        <input className="field" type="password" />
+        <input className="field" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
       </div>
       <div>
         <p className="label">Confirm password</p>
-        <input className="field" type="password" />
+        <input className="field" type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
       </div>
-      <button className="btn btn-primary spacer" onClick={onDone}>
-        Continue
+      {error && <p className="error">{error}</p>}
+      <button className="btn btn-primary spacer" disabled={busy} onClick={submit}>
+        {busy ? "Encrypting…" : "Continue"}
       </button>
     </div>
   );

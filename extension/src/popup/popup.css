@@ -213,3 +213,24 @@ textarea {
 .switch:checked::after {
   left: 16px;
 }
+
+.words {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px 12px;
+  margin: 0;
+  padding: 12px 12px 12px 36px;
+  border-radius: 10px;
+  background: var(--panel);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+}
+
+.words li::marker {
+  color: var(--faint);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
