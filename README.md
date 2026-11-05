@@ -19,6 +19,7 @@ mempool in which post-quantum signature checks fit the validation budget, withou
 | Path | |
 |---|---|
 | `contracts/` | Foundry: verifiers |
+| `extension/` | Chrome MV3 extension (React, Vite); see its README |
 | `sidecar/` | Alt-mempool sidecar fork |
 
 How AI was used: [`AI_USAGE.md`](AI_USAGE.md).

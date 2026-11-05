@@ -1,0 +1,10 @@
+body {
+  width: 360px;
+  min-height: 480px;
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
+
+main {
+  padding: 16px;
+}

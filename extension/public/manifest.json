@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Agile Wallet",
+  "version": "0.1.0",
+  "description": "Smart-account wallet secured by any mix of ECDSA, Falcon-512 and SPHINCS+.",
+  "action": {
+    "default_title": "Agile Wallet",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["storage"]
+}
