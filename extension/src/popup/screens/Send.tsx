@@ -1,80 +1,106 @@
 import { useEffect, useState } from "react";
+import { type Address, isAddress, parseEther } from "viem";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
-import { MOCK_ACCOUNT } from "../mock";
-import type { Scheme } from "../schemes";
-import { loadAccount } from "../../wallet/account";
-import { ecdsaSign } from "../../wallet/ecdsa";
-import { falconSign } from "../../wallet/falcon";
-import { sphincsSign } from "../../wallet/sphincs";
-import { withSigningKeys } from "../../wallet/keyring";
+import { shortAddress } from "../mock";
+import { type Account, type AccountState, accountState, formatEth, loadAccount } from "../../wallet/account";
+import { loadNetwork } from "../../wallet/network";
+import { type Sent, type Step, sendTransfer } from "../../wallet/transaction";
 import { WrongPasswordError } from "../../wallet/vault";
 
+const STEP_TEXT: Record<Step, string> = {
+  signing: "Signing and simulating…",
+  sending: "Sending to the VPR mempool…",
+  mining: "Waiting for a block…",
+};
+
 export function Send({ onBack }: { onBack: () => void }) {
-  const { balance, fee } = MOCK_ACCOUNT;
-  const [schemes, setSchemes] = useState<Scheme[]>([]);
+  const [account, setAccount] = useState<Account>();
+  const [state, setState] = useState<AccountState>();
+  const [to, setTo] = useState("");
+  const [amount, setAmount] = useState("");
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ error?: string; info?: string }>({});
+  const [step, setStep] = useState<Step>();
+  const [sent, setSent] = useState<Sent>();
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    loadAccount().then((account) => setSchemes(account?.schemes.map((s) => s.scheme) ?? []));
+    (async () => {
+      const loaded = await loadAccount();
+      setAccount(loaded);
+      if (loaded) setState(await accountState(await loadNetwork(), loaded).catch(() => undefined));
+    })();
   }, []);
 
-  async function signAndSend() {
-    setBusy(true);
+  // The amount in wei, or a message saying what's wrong with the form.
+  function check(): bigint | string {
+    if (!isAddress(to)) return "Enter a 0x… address to send to.";
+    let value: bigint;
     try {
-      const started = performance.now();
-      await withSigningKeys(password, schemes, async (keys) => {
-        // TODO: sign the frame transaction's sig hash once the builder exists. Until then, sign a
-        // dummy digest so the signers run inside the real extension.
-        if (keys.ecdsa) ecdsaSign(keys.ecdsa, new Uint8Array(32));
-        if (keys.falcon) await falconSign(keys.falcon, new Uint8Array(32));
-        if (keys.sphincs) await sphincsSign(keys.sphincs, new Uint8Array(32));
-      });
-      const ms = Math.round(performance.now() - started);
-      setResult({ info: `Password OK, test-signed in ${ms} ms. Sending isn't built yet.` });
+      value = parseEther(amount);
+    } catch {
+      return "Enter an amount in ETH.";
+    }
+    if (value <= 0n) return "Enter an amount above zero.";
+    if (state && value > state.balance) return "That's more than the wallet holds.";
+    return value;
+  }
+
+  async function signAndSend() {
+    const value = check();
+    if (typeof value === "string") return setError(value);
+    if (!account) return;
+    setError("");
+    setSent(undefined);
+    try {
+      setSent(await sendTransfer(password, account, { to: to as Address, value }, setStep));
+      setTo("");
+      setAmount("");
+      if (state) setState(await accountState(await loadNetwork(), account).catch(() => state));
     } catch (e) {
-      setResult({ error: e instanceof WrongPasswordError ? "Wrong password. Try again." : "Couldn't sign. Try again." });
+      setError(e instanceof WrongPasswordError ? "Wrong password. Try again." : e instanceof Error ? e.message : String(e));
     } finally {
       setPassword("");
-      setBusy(false);
+      setStep(undefined);
     }
   }
+
+  const busy = step !== undefined;
   return (
     <div className="screen">
       <Header title="Send ETH" onBack={onBack} />
       <div>
         <p className="label">To</p>
-        <input className="field mono" placeholder="0x…" />
+        <input className="field mono" placeholder="0x…" value={to} spellCheck={false} onChange={(e) => setTo(e.target.value.trim())} />
       </div>
       <div>
         <p className="label">Amount</p>
-        <input className="field" placeholder="0.0" inputMode="decimal" />
+        <input className="field" placeholder="0.0" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.trim())} />
         <p className="hint" style={{ marginTop: 4 }}>
-          Available: {balance} ETH
+          Available: {state ? formatEth(state.balance) : "—"} ETH
+          {state && !state.deployed && " · this transaction also deploys the wallet"}
         </p>
       </div>
       <div className="panel">
         <p className="label">Signed with</p>
         <div className="chips">
-          {schemes.map((s) => (
-            <SchemeChip key={s} scheme={s} />
+          {account?.schemes.map((s) => (
+            <SchemeChip key={s.scheme} scheme={s.scheme} />
           ))}
-        </div>
-        <div className="row" style={{ justifyContent: "space-between", marginTop: 10, fontSize: 13 }}>
-          <span style={{ color: "var(--muted)" }}>Network fee</span>
-          <span>~{fee} ETH</span>
         </div>
       </div>
       <div className="spacer">
         <p className="label">Password</p>
-        <input className="field" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        <input className="field" type="password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} />
       </div>
-      {result.error && <p className="error">{result.error}</p>}
-      {result.info && <p className="hint">{result.info}</p>}
+      {error && <p className="error check-lines">{error}</p>}
+      {sent && (
+        <p className={sent.ok ? "hint" : "error"}>
+          {sent.ok ? "Sent" : "Mined, but a frame failed"} in block {sent.block.toString()}: <span className="mono">{shortAddress(sent.hash)}</span>
+        </p>
+      )}
       <button className="btn btn-primary" disabled={busy || !password} onClick={signAndSend}>
-        {busy ? "Signing…" : "Sign and send"}
+        {step ? STEP_TEXT[step] : "Sign and send"}
       </button>
     </div>
   );
