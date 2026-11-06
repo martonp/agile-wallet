@@ -1,4 +1,5 @@
 import { rpc } from "./rpc";
+import type { Scheme } from "./schemes";
 
 // Where the wallet reads the chain and sends transactions.
 export interface Network {
@@ -18,6 +19,14 @@ export const CONTRACTS = {
   factory: "0xEF2A1f2C46BC11d36bCEb07D99F4e358fB11Af95",
   falconVerifier: "0xbcceb50D9510790828274Ce346D7013eb747c969",
   sphincsVerifier: "0x24227085c65D630F8D0465037CC8924E3E767A88",
+};
+
+// Each scheme's verifier in the wallet's scheme list. ECDSA is native: no verifier contract, a protocol SECP256K1
+// signature entry instead.
+export const VERIFIERS: Record<Scheme, string> = {
+  ecdsa: "0x0000000000000000000000000000000000000000",
+  falcon: CONTRACTS.falconVerifier,
+  sphincs: CONTRACTS.sphincsVerifier,
 };
 
 const KEY = "network";

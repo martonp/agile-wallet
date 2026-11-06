@@ -2,13 +2,13 @@ import { getProfile } from "@forshtat/hegota-support/profiles";
 import { toWire } from "@forshtat/hegota-support/rpc";
 import * as tx from "@forshtat/hegota-support/tx";
 import type { FrameTx, SignatureEntry } from "@forshtat/hegota-support/tx";
-import { type Address, type Hex, bytesToHex, encodeFunctionData, hexToBytes, zeroAddress } from "viem";
-import { type Account, accountState, publicKeyOf, saveAccount } from "./account";
+import { type Address, type Hex, bytesToHex, encodeFunctionData, hexToBytes } from "viem";
+import { type Account, accountState, clearPendingSchemes, publicKeyOf, saveAccount, savePendingSchemes } from "./account";
 import type { SigningKeys } from "./derive";
 import { ecdsaSign } from "./ecdsa";
 import { falconSign } from "./falcon";
 import { withSigningKeys } from "./keyring";
-import { CONTRACTS, type Network, loadNetwork } from "./network";
+import { CONTRACTS, type Network, VERIFIERS, loadNetwork } from "./network";
 import { rpc } from "./rpc";
 import { SCHEMES, type Scheme } from "./schemes";
 import { sphincsSign } from "./sphincs";
@@ -36,13 +36,6 @@ const FACTORY_ABI = [
     outputs: [{ type: "address" }],
   },
 ] as const;
-
-// ECDSA is native: no verifier contract, a protocol SECP256K1 signature entry instead.
-const VERIFIERS: Record<Scheme, Address> = {
-  ecdsa: zeroAddress,
-  falcon: CONTRACTS.falconVerifier as Address,
-  sphincs: CONTRACTS.sphincsVerifier as Address,
-};
 
 export interface Transfer {
   to: Address;
@@ -75,7 +68,8 @@ export function requiredSchemes(account: Account, action: Action): Account["sche
   return [...account.schemes, ...action.schemes.filter((n) => !account.schemes.some((c) => same(c, n)))];
 }
 
-const abiSchemes = (schemes: Account["schemes"]) => schemes.map((s) => ({ verifier: VERIFIERS[s.scheme], publicKey: s.publicKey as Hex }));
+const abiSchemes = (schemes: Account["schemes"]) =>
+  schemes.map((s) => ({ verifier: VERIFIERS[s.scheme] as Address, publicKey: s.publicKey as Hex }));
 
 // The first transaction also deploys the wallet: a DEFAULT frame calls the factory, and the owner's SECP256K1
 // entry authorises it (an ECDSA scheme's entry, by the owner, does that too).
@@ -207,11 +201,16 @@ export async function changeSchemes(password: string, account: Account, next: Sc
         const existing = account.schemes.find((c) => c.scheme === scheme);
         schemes.push({ scheme, publicKey: existing ? existing.publicKey : await publicKeyOf(scheme, keys) });
       }
+      // Remembered before sending: if the popup closes before the change is mined, syncAccount adopts it later.
+      await savePendingSchemes(schemes);
       return { type: "setSchemes", schemes };
     },
     onProgress,
   );
-  if (sent.ok) await saveAccount({ owner: account.owner, schemes });
+  if (sent.ok) {
+    await saveAccount({ owner: account.owner, schemes });
+    await clearPendingSchemes();
+  }
   return sent;
 }
 
