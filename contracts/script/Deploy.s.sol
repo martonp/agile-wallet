@@ -12,7 +12,12 @@ interface IAgileWalletFactory {
 /// Creation code comes from the build artifacts (run `forge build` first): ZKNOX_falcon8 needs solc 0.8.30 and
 /// AgileWallet 0.8.28, so they cannot share this script's compilation unit.
 ///
-///   forge script script/Deploy.s.sol --rpc-url <rpc> --private-key <key> --broadcast --slow
+///   forge script script/Deploy.s.sol --rpc-url <rpc> --private-key <key> --broadcast --slow --legacy \
+///     --gas-estimate-multiplier 900
+///
+/// The multiplier: from Amsterdam, deployed code costs EIP-8037 state gas (1530 per byte on ethrex), which
+/// Foundry's estimate misses. ZKNOX_falcon8 (18.7 KB) needs ~30M, above the 16.7M regular-gas cap; the excess
+/// gas limit becomes the state-gas reservoir, so the limit may exceed the cap.
 contract Deploy is Script {
     address private constant CREATE2_PROXY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     bytes32 private constant SALT = bytes32(0);
