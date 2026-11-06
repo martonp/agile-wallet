@@ -91,6 +91,8 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
   const raised = account && state ? raisedRules(account, state.signals) : [];
   const schemes = [...new Set([...(account?.schemes.map((s) => s.scheme) ?? []), ...raised.map((r) => r.scheme)])];
   const undeployed = state?.deployed === false;
+  // The first transaction was sent and isn't mined yet.
+  const deploying = undeployed && history.some((e) => e.deploys && e.status === "pending");
   const raisedSignals = SIGNALS.filter((s) => (state?.signals[s.address.toLowerCase()] ?? 0) > 0);
   return (
     <div className="screen">
@@ -113,7 +115,6 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
       <div className="panel">
         <p className="label">Balance</p>
         <div className="balance">{state ? `${formatEth(state.balance)} ETH` : "—"}</div>
-        {undeployed && <p className="hint">Not deployed yet.</p>}
       </div>
       {notice && <div className="warning">{notice}</div>}
       {error && <p className="error">{error}</p>}
@@ -164,27 +165,49 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
           Receive
         </button>
       </div>
-      <div>
-        <p className="label">Signature schemes{undeployed && ", from your first transaction"}</p>
-        <div className="chips">
-          {SCHEMES.map((s) => (
-            <SchemeChip key={s} scheme={s} off={!schemes.includes(s)} />
-          ))}
+      {undeployed ? (
+        // Nothing enforces the schemes before deployment: the owner key guards the address.
+        <div className="panel undeployed">
+          <p className="undeployed-title">Your wallet isn't deployed yet</p>
+          <p className="hint">
+            This address can already receive ETH. Until the wallet is deployed, only your owner key can deploy it, and
+            that key's public key stays hidden until it signs.
+          </p>
+          <p className="hint">
+            Deploying sets the signature schemes and safeguards that every later transaction needs. It happens with your
+            first send, or you can deploy now.
+          </p>
+          {deploying ? (
+            <p className="hint">Deploying: waiting for a block…</p>
+          ) : (
+            <button className="btn btn-primary" onClick={onSchemes}>
+              Set up and deploy
+            </button>
+          )}
         </div>
-      </div>
-      {/* Before deployment nothing enforces the schemes yet: only a transaction signed by the owner key can deploy the
-          wallet, and the key's public key isn't on chain until it signs. */}
-      {state && (
-        <p className="hint">
-          {!undeployed
-            ? `${schemes.length} of ${SCHEMES.length} schemes protect this account`
-            : "Until then, this address is guarded by your owner key. Its public key stays hidden until your first transaction."}
-        </p>
+      ) : (
+        state && (
+          <>
+            <div>
+              <p className="label">Signature schemes</p>
+              <div className="chips">
+                {SCHEMES.map((s) => (
+                  <SchemeChip key={s} scheme={s} off={!schemes.includes(s)} />
+                ))}
+              </div>
+            </div>
+            <p className="hint">
+              {schemes.length} of {SCHEMES.length} schemes protect this account
+            </p>
+          </>
+        )
       )}
       <Activity history={history} onOpen={onOpenTransaction} />
-      <button className="btn btn-secondary spacer" onClick={onSchemes}>
-        Change schemes
-      </button>
+      {state?.deployed && (
+        <button className="btn btn-secondary spacer" onClick={onSchemes}>
+          Change schemes
+        </button>
+      )}
     </div>
   );
 }

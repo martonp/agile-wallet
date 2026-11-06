@@ -337,3 +337,15 @@ textarea {
   border-radius: 6px;
   padding: 1px 4px;
 }
+
+/* The Account screen's explanation before the wallet is deployed. */
+.undeployed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.undeployed-title {
+  margin: 0;
+  font-weight: 600;
+}
