@@ -36,6 +36,26 @@ wallet's VERIFY frame checks each signature with its verifier, then approves the
 | `contracts/` | Foundry: verifiers, `AgileWallet`, factory, deploy script |
 | `extension/` | Chrome MV3 extension (React, Vite); see its README |
 | `sidecar/` | Alt-mempool sidecar fork |
-| `scripts/` | Devnet scripts: verifier gas measurement |
+| `scripts/` | Devnet scripts: verifier gas measurement, end-to-end transaction |
+
+## Running the demo
+
+Needs an EIP-8141 devnet with the deterministic deployment proxy (for example the alt-mempool
+workshop's docker-compose devnet: ethrex, Lighthouse, chain 1337), Foundry, Bun, Node and Cargo.
+Each step starts from the repository root.
+
+```bash
+# 1. The SPHINCS- signer
+(cd contracts/lib/SPHINCS-/signers/signer-wasm && cargo build --release --bin signer-c13)
+# 2. Contracts (deployed code costs state gas after Amsterdam, hence the multiplier)
+(cd contracts && forge build && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
+  --private-key $FUNDED_KEY --broadcast --slow --legacy --gas-estimate-multiplier 900)
+# 3. The VPR sidecar, in its own terminal
+(cd sidecar && bun install && bun run build && ./skandha standalone \
+  --configFile ../scripts/vpr-sidecar.config.json --api.port 14338 --api.wsPort 14338 \
+  --redirectRpc --executor.bundlingMode auto)
+# 4. A wallet transaction through it
+(cd scripts && npm install && FUNDER_KEY=$FUNDED_KEY SCHEMES=sphincs node send-wallet-tx.mjs)
+```
 
 How AI was used: [`AI_USAGE.md`](AI_USAGE.md).

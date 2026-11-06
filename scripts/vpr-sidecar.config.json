@@ -1,0 +1,6 @@
+{
+  "entryPoints": ["0x00000000000000000000000000000000000000aa"],
+  "canonicalEntryPoint": "0x00000000000000000000000000000000000000aa",
+  "rpcEndpoint": "http://127.0.0.1:8545",
+  "rpcEndpointSubmit": "http://127.0.0.1:8545"
+}
