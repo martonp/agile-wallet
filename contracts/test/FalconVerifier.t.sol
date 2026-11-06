@@ -2,7 +2,8 @@
 pragma solidity 0.8.30;
 
 import {Test} from "forge-std/Test.sol";
-import {FalconVerifier} from "../src/FalconVerifier.sol";
+import {FalconVerifier, IZknoxFalcon8} from "../src/FalconVerifier.sol";
+import {ZKNOX_falcon8} from "ETHFALCON/src/ZKNOX_falcon8.sol";
 
 /// Parity test: signatures from ZKNOX's falcon.js (test/ffi/falcon_sign.cjs) verify on chain.
 contract FalconVerifierTest is Test {
@@ -16,7 +17,7 @@ contract FalconVerifierTest is Test {
         assembly {
             helper := create(0, add(initCode, 32), mload(initCode))
         }
-        verifier = new FalconVerifier(helper);
+        verifier = new FalconVerifier(IZknoxFalcon8(address(new ZKNOX_falcon8(helper))));
     }
 
     /// Returns (publicKey, signature) signed by falcon.js with the key derived from `seed`.
@@ -59,10 +60,5 @@ contract FalconVerifierTest is Test {
         (bytes memory pk, bytes memory sig) = sign(keccak256("seed"), digest);
         assertFalse(verifier.verify(new bytes(1023), digest, sig));
         assertFalse(verifier.verify(pk, digest, new bytes(1063)));
-    }
-
-    function test_rejectsWrongHelper() public {
-        vm.expectRevert("bad f1600 helper");
-        new FalconVerifier(address(this));
     }
 }

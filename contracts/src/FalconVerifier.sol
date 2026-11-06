@@ -1,25 +1,28 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.30;
+pragma solidity ^0.8.28;
 
 import {IVerifier} from "./IVerifier.sol";
-import {falcon_core8} from "ETHFALCON/src/ZKNOX_falcon_core8.sol";
 
-/// Falcon-512 (NIST, SHAKE256 hash-to-point) through ZKNOX's falcon8 verifier.
+/// ZKNOX's falcon8 verifier (ETHFALCON src/ZKNOX_falcon8.sol), deployed on its own.
+interface IZknoxFalcon8 {
+    function verify(bytes memory h, bytes memory salt, uint256[] memory s2, uint256[] memory ntth)
+        external
+        view
+        returns (bool);
+}
+
+/// Falcon-512 (NIST, SHAKE256 hash-to-point): an IVerifier adapter over a deployed ZKNOX falcon8 verifier.
 ///
 /// Takes the encodings of ZKNOX's own signer (ETHFALCON/falcon/falcon.js) without their header bytes:
 /// - `publicKey`: 1024 bytes, NTT(h) as 512 big-endian 16-bit coefficients;
 /// - `signature`: 1064 bytes, the 40-byte salt then s2 as 512 big-endian 16-bit coefficients mod q.
-/// Packing them into falcon8's 16-coefficients-per-word layout costs some gas here, which keeps the
-/// signer to a byte copy.
+/// The adapter only packs them into falcon8's 16-coefficients-per-word layout, which keeps the signer to a
+/// byte copy. The verification itself runs in the falcon8 contract, so that is what mempool rules can list.
 contract FalconVerifier is IVerifier {
-    /// The Keccak-f[1600] helper falcon8 runs SHAKE256 on (ETHFALCON test/f1600_zknox.hex).
-    bytes32 public constant F1600_CODEHASH = 0x661c9f13236c0174873874530946d802d0ac54373091f0bdea36ab2e3f409155;
+    IZknoxFalcon8 public immutable falcon8;
 
-    address public immutable f1600Helper;
-
-    constructor(address helper) {
-        require(helper.codehash == F1600_CODEHASH, "bad f1600 helper");
-        f1600Helper = helper;
+    constructor(IZknoxFalcon8 falcon8_) {
+        falcon8 = falcon8_;
     }
 
     function verify(bytes calldata publicKey, bytes32 digest, bytes calldata signature)
@@ -28,9 +31,13 @@ contract FalconVerifier is IVerifier {
         returns (bool)
     {
         if (publicKey.length != 1024 || signature.length != 1064) return false;
-        return falcon_core8(
-            signature[0:40], abi.encodePacked(digest), f1600Helper, _pack(signature[40:]), _pack(publicKey)
-        );
+        try falcon8.verify(abi.encodePacked(digest), signature[0:40], _pack(signature[40:]), _pack(publicKey)) returns (
+            bool ok
+        ) {
+            return ok;
+        } catch {
+            return false;
+        }
     }
 
     /// 512 big-endian 16-bit coefficients into 32 words; coefficient i sits at bits 16*(i%16) of word i/16.

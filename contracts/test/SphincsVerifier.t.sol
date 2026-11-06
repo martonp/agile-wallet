@@ -2,14 +2,15 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
-import {SphincsVerifier} from "../src/SphincsVerifier.sol";
+import {SphincsVerifier, ISphincsC13} from "../src/SphincsVerifier.sol";
+import {SphincsC13Asm} from "SPHINCS-/src/keccak/SPHINCs-C13Asm.sol";
 
 /// Parity test: signatures from the SPHINCS- C13 signer verify on chain.
 /// Needs the signer built once: `cargo build --release --bin signer-c13` in lib/SPHINCS-/signers/signer-wasm.
 contract SphincsVerifierTest is Test {
     string private constant SIGNER = "lib/SPHINCS-/signers/signer-wasm/target/release/signer-c13";
 
-    SphincsVerifier private verifier = new SphincsVerifier();
+    SphincsVerifier private verifier = new SphincsVerifier(ISphincsC13(address(new SphincsC13Asm())));
 
     struct Key {
         bytes32 seed;
