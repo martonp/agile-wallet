@@ -19,7 +19,7 @@ test("accounts are the hardened account level, m/44'/60'/a'/0/0", () => {
   expect(bytesToHex(ecdsa!)).toBe("7797c0f3db8b946604ec2039dfd9763e4ffdc53174342a2ed9b14fa3eda666a5");
 });
 
-test("Falcon and SPHINCS+ sub-seeds are HMAC-SHA512 prefixes with big-endian a and i", () => {
+test("Falcon and SPHINCS- sub-seeds are HMAC-SHA512 prefixes with big-endian a and i", () => {
   const keys = deriveSigningKeys(seed, ["falcon", "sphincs"], 1, 2);
   const msg = (label: string) => new Uint8Array([...new TextEncoder().encode(`agile-wallet/${label}/`), 0, 0, 0, 1, 0, 0, 0, 2]);
   expect(keys.falcon).toEqual(hmac(sha512, seed, msg("falcon-512")).slice(0, 48));

@@ -78,7 +78,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
         </div>
         <Dodger />
         <p className="hint" style={{ textAlign: "center" }}>
-          One recovery phrase protects your ECDSA, Falcon-512 and SPHINCS+ keys.
+          One recovery phrase protects your ECDSA, Falcon-512 and SPHINCS- keys.
         </p>
         <div className="spacer" />
         <button className="btn btn-primary" onClick={() => go("create")}>
