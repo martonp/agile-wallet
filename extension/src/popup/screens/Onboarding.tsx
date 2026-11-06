@@ -82,7 +82,7 @@ export function Onboarding({ onDone }: { onDone: (account: Account) => void }) {
         </div>
         <Dodger />
         <p className="hint" style={{ textAlign: "center" }}>
-          One recovery phrase protects your ECDSA, Falcon-512 and SPHINCS- keys.
+          When a signature scheme breaks, your wallet doesn't.
         </p>
         <div className="spacer" />
         <button className="btn btn-primary" onClick={() => go("create")}>
