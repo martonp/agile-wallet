@@ -78,7 +78,7 @@ export function Onboarding({ onDone }: { onDone: (account: Account) => void }) {
       <div className="screen">
         <div className="brand">
           <h1 className="wordmark">Agile Wallet</h1>
-          <p className="tagline">The wallet for crypto agility</p>
+          <p className="tagline">The crypto-agile wallet</p>
         </div>
         <Dodger />
         <p className="hint" style={{ textAlign: "center" }}>
