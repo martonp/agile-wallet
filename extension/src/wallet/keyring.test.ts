@@ -74,7 +74,7 @@ test("adds accounts from the same seed, each with its own keys, and selects the 
 test("creating a wallet again replaces every account of the old one", async () => {
   await createWallet("pw", generateEntropy(), ["ecdsa"], null);
   const old = await addAccount("pw", "Old second", ["ecdsa"]);
-  await savePendingSchemes(1, old.schemes);
+  await savePendingSchemes(1, { schemes: old.schemes, rules: [] });
 
   await createWallet("pw2", generateEntropy(), ["ecdsa"], null);
   expect((await listAccounts()).map((a) => a.name)).toEqual(["Account 1"]);

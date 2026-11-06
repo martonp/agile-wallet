@@ -60,7 +60,8 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
     setBusy(true);
     if (deployed === false) return saveBeforeDeployment(account);
     try {
-      const sent = await changeSchemes(password, account, next, onProgress);
+      const rules = (account.rules ?? []).map(({ signal, scheme }) => ({ signal, scheme }));
+      const sent = await changeSchemes(password, account, { schemes: next, rules }, onProgress);
       setTracker((t) => t && { ...t, phase: "done", block: sent.block, ok: sent.ok });
       if (sent.ok) {
         const updated = await loadAccount(index);

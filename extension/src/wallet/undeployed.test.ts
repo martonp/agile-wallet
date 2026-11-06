@@ -21,7 +21,7 @@ beforeEach(() => {
   code = "0x";
   vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
     const { method } = JSON.parse(init.body as string);
-    const result = { eth_getCode: code, eth_getBalance: "0x0" }[method as string];
+    const result = { eth_getCode: code, eth_getBalance: "0x0", eth_call: "0x0" }[method as string]; // eth_call: the signal is not raised
     return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result }));
   });
 });

@@ -17,11 +17,24 @@ export const LOCAL_DEVNET: Network = {
 // The wallet's contracts (contracts/deployments/1337.json). They are deployed through the deterministic CREATE2
 // proxy, so they have these addresses on every chain they are deployed to; a redeploy changes them with the code.
 export const CONTRACTS = {
-  factory: "0xEF2A1f2C46BC11d36bCEb07D99F4e358fB11Af95",
-  implementation: "0x699cB3B36e172b1C4438e65438F4bf33Ee69966c", // AgileWallet, which every wallet's proxy calls
+  factory: "0x53c254efc0FD3ADBc2bF47ACbFb681641EcD6B38",
+  implementation: "0x29216Ad802a2622Ddb35DBC0eC45DA00223b1c2B", // AgileWallet, which every wallet's proxy calls
   falconVerifier: "0xbcceb50D9510790828274Ce346D7013eb747c969",
   sphincsVerifier: "0x24227085c65D630F8D0465037CC8924E3E767A88",
+  ecdsaBreakSignal: "0x108c7aD6Dd81EA131A761B3Db9F817056D26941c",
 };
+
+// The break signals a wallet can subscribe to: one-way flags a cryptographer raises when a scheme is broken. Only
+// signals the VPR mempool lists, since validation reads them and the mempool rejects reads of any other.
+export interface BreakSignal {
+  address: string;
+  breaks: Scheme;
+  label: string;
+}
+
+export const SIGNALS: BreakSignal[] = [
+  { address: CONTRACTS.ecdsaBreakSignal, breaks: "ecdsa", label: "Quantum computers break ECDSA" },
+];
 
 // Each scheme's verifier in the wallet's scheme list. ECDSA is native: no verifier contract, a protocol SECP256K1
 // signature entry instead.

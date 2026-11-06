@@ -21,6 +21,7 @@ test("the contracts are the devnet deployment's", () => {
   expect(CONTRACTS.implementation).toBe(deployment.implementation);
   expect(CONTRACTS.falconVerifier).toBe(deployment.falconVerifier);
   expect(CONTRACTS.sphincsVerifier).toBe(deployment.sphincsVerifier);
+  expect(CONTRACTS.ecdsaBreakSignal).toBe(deployment.ecdsaBreakSignal);
 });
 
 test("loads the defaults until a network is saved", async () => {

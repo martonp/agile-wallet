@@ -11,9 +11,10 @@ export interface HistoryEntry {
   to?: string; // a transfer's recipient
   value?: string; // a transfer's amount, in wei (bigint as a string: storage is JSON)
   schemes?: Scheme[]; // a scheme change's new list
+  rules?: Scheme[]; // and the backup scheme of each of its rules
   deploys: boolean; // the wallet's first transaction, which also deploys it
   signers: Scheme[]; // the scheme of each signature the transaction carried, in order
-  status: "pending" | "mined" | "failed";
+  status: "pending" | "mined" | "failed" | "dropped"; // dropped: the mempool let it go without mining it
   block?: number;
   fee?: string; // what it paid, in wei: gas used times the effective gas price (bigint as a string)
 }
@@ -48,11 +49,17 @@ export async function settleEntry(index: number, hash: string, receipt: Receipt)
   await saveHistory(index, entries.map((e) => (e.hash === hash ? { ...e, ...settled } : e)));
 }
 
+// Marks a pending entry dropped: the mempool evicted it, so it will never be mined.
+export async function dropEntry(index: number, hash: string): Promise<void> {
+  const entries = await loadHistory(index);
+  await saveHistory(index, entries.map((e) => (e.hash === hash && e.status === "pending" ? { ...e, status: "dropped" as const } : e)));
+}
+
 // The history, after settling pending entries whose receipts the node now has, and filling in the fee of entries
 // settled before fees were recorded.
 export async function syncHistory(network: Network, index: number): Promise<HistoryEntry[]> {
   const entries = await loadHistory(index);
-  const unsettled = entries.filter((e) => e.status === "pending" || e.fee === undefined);
+  const unsettled = entries.filter((e) => e.status === "pending" || (e.status !== "dropped" && e.fee === undefined));
   if (unsettled.length === 0) return entries;
   for (const entry of unsettled) {
     const receipt = await rpc<Receipt | null>(network.rpcUrl, "eth_getTransactionReceipt", [entry.hash]);

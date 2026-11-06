@@ -3,7 +3,7 @@ import { type Hex, concat, encodeAbiParameters, getContractAddress, keccak256, p
 import { type SigningKeys, deriveSigningKeys, wipeKeys } from "./derive";
 import { ecdsaAddress } from "./ecdsa";
 import { falconPublicKey } from "./falcon";
-import { CONTRACTS, type Network, VERIFIERS } from "./network";
+import { CONTRACTS, type Network, SIGNALS, VERIFIERS } from "./network";
 import { rpc } from "./rpc";
 import { SCHEMES, type Scheme } from "./schemes";
 import { sphincsPublicKey } from "./sphincs";
@@ -14,7 +14,15 @@ export interface Account {
   name: string;
   owner: string; // the ECDSA address that authorises the wallet's deployment, and fixes its address
   schemes: { scheme: Scheme; publicKey: string }[]; // in SCHEMES order; ECDSA's public key is its address
+  rules?: Rule[]; // break-signal safeguards; missing means none
   restored?: boolean; // set by deriveAccount when the schemes came from the wallet on chain; never saved
+}
+
+// A safeguard: once `signal` is raised, `scheme` (with this public key) must also sign.
+export interface Rule {
+  signal: string;
+  scheme: Scheme;
+  publicKey: string;
 }
 
 // Each account under its own key, so a write to one never touches another: account 0 at "account", then
@@ -38,7 +46,12 @@ export async function deriveAccount(
     for (const scheme of SCHEMES) all.push({ scheme, publicKey: await publicKeyOf(scheme, keys) });
     const owner = all.find((s) => s.scheme === "ecdsa")!.publicKey;
     const onchain = network && (await recoverSchemes(network, owner, all).catch(() => undefined));
-    if (onchain) return { index, name, owner, schemes: onchain, restored: true };
+    if (onchain) {
+      // A node that can't answer fails the restore, rather than saving it with no rules for good. Rules set outside
+      // the extension match no candidate: saved as none, and the Account screen says they don't match.
+      const rules = await recoverRules(network!, owner, all);
+      return { index, name, owner, schemes: onchain, rules: rules ?? [], restored: true };
+    }
     const chosen = all.filter((s) => schemes.includes(s.scheme));
     if (chosen.length === 0) throw new Error("Choose at least one scheme");
     return { index, name, owner, schemes: chosen };
@@ -59,6 +72,14 @@ export async function recoverSchemes(network: Network, owner: string, all: Accou
     if (schemesHash(subset) === onchain) return subset;
   }
   return undefined;
+}
+
+// A deployed wallet's rules, from its rules hash: none, or one rule on a known signal whose backup is one of the
+// seed's keys. Undefined if nothing matches.
+export async function recoverRules(network: Network, owner: string, all: Account["schemes"]): Promise<Rule[] | undefined> {
+  const onchain = await onchainRulesHash(network, walletAddress(owner));
+  const candidates: Rule[][] = [[], ...SIGNALS.flatMap((s) => all.map((backup) => [{ signal: s.address, ...backup }]))];
+  return candidates.find((rules) => rulesHash(rules) === onchain);
 }
 
 // A scheme's public key, as its verifier takes it, from its signing key: for ECDSA, the address.
@@ -120,24 +141,75 @@ export async function clearAccounts(): Promise<void> {
   await chrome.storage.local.remove(keys);
 }
 
+// The wallet's ABI types for its scheme list and rules (AgileWallet.Scheme[], AgileWallet.Rule[]).
+const SCHEME_TUPLE = {
+  type: "tuple",
+  components: [
+    { name: "verifier", type: "address" },
+    { name: "publicKey", type: "bytes" },
+  ],
+} as const;
+export const SCHEMES_ABI = { ...SCHEME_TUPLE, type: "tuple[]" } as const;
+export const RULES_ABI = {
+  type: "tuple[]",
+  components: [{ name: "signal", type: "address" }, { ...SCHEME_TUPLE, name: "scheme" }],
+} as const;
+
+export const abiSchemes = (schemes: { scheme: Scheme; publicKey: string }[]) =>
+  schemes.map((s) => ({ verifier: VERIFIERS[s.scheme] as Hex, publicKey: s.publicKey as Hex }));
+export const abiRules = (rules: Rule[]) => rules.map((r) => ({ signal: r.signal as Hex, scheme: abiSchemes([r])[0] }));
+
 const SCHEMES_HASH = toFunctionSelector("schemesHash()");
+const RULES_HASH = toFunctionSelector("rulesHash()");
+const BROKEN_AT = toFunctionSelector("brokenAt()");
+const NO_RULES = `0x${"00".repeat(32)}`;
 
 // keccak256(abi.encode(Scheme[])): what AgileWallet stores for its scheme list.
 export function schemesHash(schemes: Account["schemes"]): string {
-  const encoded = encodeAbiParameters(
-    [{ type: "tuple[]", components: [{ name: "verifier", type: "address" }, { name: "publicKey", type: "bytes" }] }],
-    [schemes.map((s) => ({ verifier: VERIFIERS[s.scheme] as Hex, publicKey: s.publicKey as Hex }))],
-  );
-  return keccak256(encoded);
+  return keccak256(encodeAbiParameters([SCHEMES_ABI], [abiSchemes(schemes)]));
+}
+
+// keccak256(abi.encode(Rule[])), or zero for none: what AgileWallet stores for its rules.
+export function rulesHash(rules: Rule[]): string {
+  return rules.length === 0 ? NO_RULES : keccak256(encodeAbiParameters([RULES_ABI], [abiRules(rules)]));
 }
 
 async function onchainSchemesHash(network: Network, address: string): Promise<string> {
   return rpc<string>(network.rpcUrl, "eth_call", [{ to: address, data: SCHEMES_HASH }, "latest"]);
 }
 
-// A scheme change that was sent but may not be mined yet, per account.
-export async function savePendingSchemes(index: number, schemes: Account["schemes"]): Promise<void> {
-  await chrome.storage.local.set({ [keyOf("pendingSchemes", index)]: schemes });
+async function onchainRulesHash(network: Network, address: string): Promise<string> {
+  return rpc<string>(network.rpcUrl, "eth_call", [{ to: address, data: RULES_HASH }, "latest"]);
+}
+
+// When each known signal was raised (seconds since the epoch), or 0 while it isn't, by lowercase address. A signal
+// not deployed on this network reads as not raised.
+export type SignalStates = Record<string, number>;
+
+export async function signalStates(network: Network): Promise<SignalStates> {
+  const entries = await Promise.all(
+    SIGNALS.map(async (s) => {
+      const brokenAt = await rpc<string>(network.rpcUrl, "eth_call", [{ to: s.address, data: BROKEN_AT }, "latest"]);
+      return [s.address.toLowerCase(), brokenAt === "0x" ? 0 : Number(BigInt(brokenAt))] as const;
+    }),
+  );
+  return Object.fromEntries(entries);
+}
+
+// The account's rules whose signal is raised.
+export function raisedRules(account: Account, signals: SignalStates): Rule[] {
+  return (account.rules ?? []).filter((r) => (signals[r.signal.toLowerCase()] ?? 0) > 0);
+}
+
+// A change of schemes and rules that was sent but may not be mined yet, per account. Changes saved before rules
+// existed are just the scheme list.
+export interface PendingChange {
+  schemes: Account["schemes"];
+  rules: Rule[];
+}
+
+export async function savePendingSchemes(index: number, change: PendingChange): Promise<void> {
+  await chrome.storage.local.set({ [keyOf("pendingSchemes", index)]: change });
 }
 
 export async function clearPendingSchemes(index: number): Promise<void> {
@@ -149,11 +221,13 @@ export async function clearPendingSchemes(index: number): Promise<void> {
 export async function syncAccount(network: Network, index: number): Promise<Account | undefined> {
   const account = await loadAccount(index);
   const key = keyOf("pendingSchemes", index);
-  const pending = (await chrome.storage.local.get(key))[key] as Account["schemes"] | null | undefined;
-  if (!account || !pending) return account;
-  const onchain = await onchainSchemesHash(network, walletAddress(account.owner));
-  if (onchain !== schemesHash(pending)) return account; // not mined (yet), or it failed
-  const updated = { ...account, schemes: pending };
+  const stored = (await chrome.storage.local.get(key))[key] as PendingChange | Account["schemes"] | null | undefined;
+  if (!account || !stored) return account;
+  const pending = Array.isArray(stored) ? { schemes: stored, rules: account.rules ?? [] } : stored;
+  const address = walletAddress(account.owner);
+  const [schemes, rules] = await Promise.all([onchainSchemesHash(network, address), onchainRulesHash(network, address)]);
+  if (schemes !== schemesHash(pending.schemes) || rules !== rulesHash(pending.rules)) return account; // not mined (yet), or it failed
+  const updated = { ...account, ...pending };
   await saveAccount(updated);
   await clearPendingSchemes(index);
   return updated;
@@ -176,18 +250,21 @@ export interface AccountState {
   address: string;
   balance: bigint; // wei
   deployed: boolean;
-  schemesMatch: boolean; // the stored schemes are the wallet's on chain (always, before deployment)
+  schemesMatch: boolean; // the stored schemes and rules are the wallet's on chain (always, before deployment)
+  signals: SignalStates;
 }
 
 export async function accountState(network: Network, account: Account): Promise<AccountState> {
   const address = walletAddress(account.owner);
-  const [balance, code] = await Promise.all([
+  const [balance, code, signals] = await Promise.all([
     rpc<string>(network.rpcUrl, "eth_getBalance", [address, "latest"]),
     rpc<string>(network.rpcUrl, "eth_getCode", [address, "latest"]),
+    signalStates(network),
   ]);
   const deployed = code !== "0x";
-  const schemesMatch = !deployed || (await onchainSchemesHash(network, address)) === schemesHash(account.schemes);
-  return { address, balance: BigInt(balance), deployed, schemesMatch };
+  const onchain = deployed && (await Promise.all([onchainSchemesHash(network, address), onchainRulesHash(network, address)]));
+  const schemesMatch = !onchain || (onchain[0] === schemesHash(account.schemes) && onchain[1] === rulesHash(account.rules ?? []));
+  return { address, balance: BigInt(balance), deployed, schemesMatch, signals };
 }
 
 // Wei as ETH, with up to `decimals` decimals.
