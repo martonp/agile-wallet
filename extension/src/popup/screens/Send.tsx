@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { MOCK_ACCOUNT } from "../mock";
+import { falconSign } from "../../wallet/falcon";
 import { withSigningKeys } from "../../wallet/keyring";
 import { WrongPasswordError } from "../../wallet/vault";
 
@@ -14,10 +15,14 @@ export function Send({ onBack }: { onBack: () => void }) {
   async function signAndSend() {
     setBusy(true);
     try {
-      await withSigningKeys(password, schemes, () => {
-        // TODO: build and sign the frame transaction once the wallet contract and signers exist.
+      const started = performance.now();
+      await withSigningKeys(password, schemes, async (keys) => {
+        // TODO: sign the frame transaction's sig hash once the builder exists. Until then, sign a
+        // dummy digest so the Falcon signer runs inside the real extension.
+        if (keys.falcon) await falconSign(keys.falcon, new Uint8Array(32));
       });
-      setResult({ info: "Password OK. Sending isn't built yet." });
+      const ms = Math.round(performance.now() - started);
+      setResult({ info: `Password OK, test-signed in ${ms} ms. Sending isn't built yet.` });
     } catch (e) {
       setResult({ error: e instanceof WrongPasswordError ? "Wrong password. Try again." : "Couldn't sign. Try again." });
     } finally {
