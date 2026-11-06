@@ -277,3 +277,37 @@ textarea {
   opacity: 0.5;
   cursor: default;
 }
+
+.brand {
+  padding-top: 8px;
+  text-align: center;
+}
+
+/* Wordmark with a slow gradient sweep. */
+.wordmark {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  background: linear-gradient(90deg, var(--brand-a), var(--brand-b), var(--brand-a)) 0 0 / 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: wordmark-sweep 6s linear infinite;
+}
+
+@keyframes wordmark-sweep {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.tagline {
+  margin: 6px 0 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}

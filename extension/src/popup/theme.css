@@ -16,6 +16,8 @@
   --warning-bg: #faeeda;
   --warning-text: #633806;
   --danger: #a32d2d;
+  --brand-a: #534ab7;
+  --brand-b: #1d9e75;
 
   --ecdsa-bg: #e6f1fb;
   --ecdsa-text: #0c447c;
@@ -47,6 +49,8 @@
     --warning-bg: #412402;
     --warning-text: #fac775;
     --danger: #f09595;
+    --brand-a: #afa9ec;
+    --brand-b: #5dcaa5;
 
     --ecdsa-bg: #0c447c;
     --ecdsa-text: #b5d4f4;

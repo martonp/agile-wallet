@@ -1,0 +1,213 @@
+/* One loop of three Matrix leans, each under a projectile that slows to bullet time overhead.
+   Pose transforms use view-box coordinates: the hips are at (160, 126), the feet at y 158. */
+.dodger {
+  display: block;
+  width: 100%;
+  border-radius: 12px;
+  background: var(--panel);
+  --loop: 7.5s;
+}
+
+.dodger * {
+  animation-duration: var(--loop);
+  animation-iteration-count: infinite;
+  transform-box: view-box;
+}
+
+.dodger-lattice {
+  fill: var(--line);
+}
+
+.dodger-lattice circle {
+  fill: var(--field-border);
+}
+
+.dodger-ground {
+  stroke: var(--field-border);
+  stroke-dasharray: 2 4;
+}
+
+.dodger-shadow {
+  fill: var(--field-border);
+}
+
+.dodger-figure {
+  fill: var(--text);
+  stroke: var(--text);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dodger-legs {
+  fill: none;
+  animation-name: dodger-legs;
+}
+
+.dodger-arm {
+  animation-name: dodger-arm;
+}
+
+.dodger-upper {
+  transform-origin: 160px 126px;
+  animation-name: dodger-upper;
+}
+
+.dodger-upper path {
+  fill: none;
+}
+
+.dodger-shield {
+  stroke-width: 1.5;
+  animation-name: dodger-shield;
+  animation-timing-function: step-end;
+}
+
+.dodger-trail path,
+.dodger-rods,
+.dodger-antenna,
+.dodger-pins {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.dodger-trail path {
+  stroke: var(--faint);
+  stroke-width: 2;
+  opacity: 0.6;
+}
+
+.dodger-gold {
+  fill: #e0a83a;
+  stroke: #9a6a14;
+  stroke-width: 0.8;
+}
+
+.dodger-rods {
+  stroke: #c98f24;
+  stroke-width: 1.6;
+}
+
+.dodger-glow {
+  fill: #4ff0d0;
+  filter: drop-shadow(0 0 2px #4ff0d0);
+}
+
+.dodger-robot-head {
+  fill: var(--muted);
+}
+
+.dodger-antenna {
+  stroke: var(--muted);
+  stroke-width: 2;
+}
+
+.dodger-beacon {
+  fill: #f0507a;
+}
+
+.dodger-chip-body {
+  fill: #2c2850;
+  stroke: #7f77dd;
+  stroke-width: 1;
+}
+
+.dodger-pins {
+  stroke: #afa9ec;
+  stroke-width: 2;
+}
+
+.dodger-chip text {
+  font: 800 9px system-ui, sans-serif;
+}
+
+.dodger-quantum,
+.dodger-robot,
+.dodger-chip {
+  animation-timing-function: linear;
+}
+
+.dodger-quantum {
+  animation-name: dodger-quantum;
+}
+
+.dodger-robot {
+  animation-name: dodger-robot;
+}
+
+.dodger-chip {
+  animation-name: dodger-chip;
+}
+
+.dodger-spin {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dodger-spin 0.8s linear infinite;
+}
+
+/* Each projectile spends a third of the loop: a quick approach, bullet time over the figure
+   (5% to 21%), a quick exit. The figure leans back from 2% to 7% and recovers from 22% to 27%. */
+@keyframes dodger-quantum {
+  0% { transform: translate(350px, 74px); }
+  5% { transform: translate(225px, 74px); }
+  21% { transform: translate(95px, 74px); }
+  26%, 100% { transform: translate(-60px, 74px); }
+}
+
+@keyframes dodger-robot {
+  0%, 33.33% { transform: translate(350px, 82px); }
+  38.33% { transform: translate(225px, 82px); }
+  54.33% { transform: translate(95px, 82px); }
+  59.33%, 100% { transform: translate(-60px, 82px); }
+}
+
+@keyframes dodger-chip {
+  0%, 66.67% { transform: translate(350px, 80px); }
+  71.67% { transform: translate(225px, 80px); }
+  87.67% { transform: translate(95px, 80px); }
+  92.67%, 100% { transform: translate(-60px, 80px); }
+}
+
+/* Hips drop and shift back while the upper body bends back, swaying in slow motion. */
+@keyframes dodger-upper {
+  0%, 2%, 27%, 35.33%, 60.33%, 68.67%, 93.67%, 100% { transform: none; }
+  7%, 22%, 40.33%, 55.33%, 73.67%, 88.67% { transform: translate(-4px, 8px) rotate(-68deg); }
+  14.5%, 47.83%, 81.17% { transform: translate(-4px, 8px) rotate(-76deg); }
+}
+
+/* Knees bend forward under the lean. */
+@keyframes dodger-legs {
+  0%, 2%, 27%, 35.33%, 60.33%, 68.67%, 93.67%, 100% {
+    d: path("M151 158 L156 142 L160 126 M169 158 L165 142 L160 126");
+  }
+  7%, 22%, 40.33%, 55.33%, 73.67%, 88.67% {
+    d: path("M151 158 L165 147 L156 134 M169 158 L175 145 L156 134");
+  }
+}
+
+/* The free arm flails up and back. */
+@keyframes dodger-arm {
+  0%, 2%, 27%, 35.33%, 60.33%, 68.67%, 93.67%, 100% { d: path("M147 116 L153 110 L160 104"); }
+  7%, 22%, 40.33%, 55.33%, 73.67%, 88.67% { d: path("M178 88 L170 94 L160 104"); }
+  14.5%, 47.83%, 81.17% { d: path("M172 82 L168 93 L160 104"); }
+}
+
+/* Crypto agility: a new scheme after each dodge. */
+@keyframes dodger-shield {
+  0% { fill: var(--ecdsa-text); }
+  26% { fill: var(--falcon-text); }
+  59.33% { fill: var(--sphincs-text); }
+  92.67%, 100% { fill: var(--ecdsa-text); }
+}
+
+@keyframes dodger-spin {
+  to { transform: rotate(-360deg); }
+}
+
+/* A still frame mid-dodge: leaning back under the quantum computer. */
+@media (prefers-reduced-motion: reduce) {
+  .dodger * {
+    animation-play-state: paused;
+    animation-delay: -1s;
+  }
+}

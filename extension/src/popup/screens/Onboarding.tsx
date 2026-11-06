@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { IconShieldLock } from "@tabler/icons-react";
 import { Header } from "../components/Header";
+import { Dodger } from "../components/Dodger";
 import { SchemeChip } from "../components/SchemeChip";
 import { SCHEMES, type Scheme } from "../schemes";
 import { createWallet } from "../../wallet/keyring";
@@ -72,10 +72,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   if (mode === "choose") {
     return (
       <div className="screen">
-        <Header title="Agile Wallet">
-          <IconShieldLock size={20} color="var(--faint)" aria-hidden />
-        </Header>
-        <p className="hint">One recovery phrase protects your ECDSA, Falcon-512 and SPHINCS+ keys.</p>
+        <div className="brand">
+          <h1 className="wordmark">Agile Wallet</h1>
+          <p className="tagline">The wallet for crypto agility</p>
+        </div>
+        <Dodger />
+        <p className="hint" style={{ textAlign: "center" }}>
+          One recovery phrase protects your ECDSA, Falcon-512 and SPHINCS+ keys.
+        </p>
         <div className="spacer" />
         <button className="btn btn-primary" onClick={() => go("create")}>
           Create new wallet
