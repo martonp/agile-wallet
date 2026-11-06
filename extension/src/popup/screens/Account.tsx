@@ -1,19 +1,24 @@
-import { IconCopy, IconLock } from "@tabler/icons-react";
+import { IconCopy, IconLock, IconSettings } from "@tabler/icons-react";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { MOCK_ACCOUNT, shortAddress } from "../mock";
 import { SCHEMES } from "../schemes";
 
-type Props = { onSend: () => void; onSchemes: () => void; onLock: () => void };
+type Props = { onSend: () => void; onSchemes: () => void; onSettings: () => void; onLock: () => void };
 
-export function Account({ onSend, onSchemes, onLock }: Props) {
+export function Account({ onSend, onSchemes, onSettings, onLock }: Props) {
   const { name, address, balance, schemes } = MOCK_ACCOUNT;
   return (
     <div className="screen">
       <Header title={name}>
-        <button className="icon-button" onClick={onLock} aria-label="Lock">
-          <IconLock size={18} />
-        </button>
+        <span className="row">
+          <button className="icon-button" onClick={onSettings} aria-label="Network settings">
+            <IconSettings size={18} />
+          </button>
+          <button className="icon-button" onClick={onLock} aria-label="Lock">
+            <IconLock size={18} />
+          </button>
+        </span>
       </Header>
       <div className="mono row" style={{ alignItems: "center", color: "var(--muted)" }}>
         {shortAddress(address)}

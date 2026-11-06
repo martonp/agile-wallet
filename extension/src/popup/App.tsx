@@ -5,8 +5,9 @@ import { Unlock } from "./screens/Unlock";
 import { Account } from "./screens/Account";
 import { Send } from "./screens/Send";
 import { ChangeSchemes } from "./screens/ChangeSchemes";
+import { Settings } from "./screens/Settings";
 
-type Screen = "onboarding" | "unlock" | "account" | "send" | "schemes";
+type Screen = "onboarding" | "unlock" | "account" | "send" | "schemes" | "settings";
 
 // Account data is still mock; only wallet creation and the signing password are real so far.
 export function App() {
@@ -26,11 +27,18 @@ export function App() {
       return <Unlock onUnlock={toAccount} onForgot={() => setScreen("onboarding")} />;
     case "account":
       return (
-        <Account onSend={() => setScreen("send")} onSchemes={() => setScreen("schemes")} onLock={() => setScreen("unlock")} />
+        <Account
+          onSend={() => setScreen("send")}
+          onSchemes={() => setScreen("schemes")}
+          onSettings={() => setScreen("settings")}
+          onLock={() => setScreen("unlock")}
+        />
       );
     case "send":
       return <Send onBack={toAccount} />;
     case "schemes":
       return <ChangeSchemes onBack={toAccount} />;
+    case "settings":
+      return <Settings onBack={toAccount} />;
   }
 }

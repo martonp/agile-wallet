@@ -130,6 +130,12 @@ textarea {
   color: var(--danger);
 }
 
+.check-lines {
+  margin: 0;
+  padding-left: 16px;
+  overflow-wrap: anywhere;
+}
+
 .warning {
   padding: 10px 12px;
   border-radius: 8px;
