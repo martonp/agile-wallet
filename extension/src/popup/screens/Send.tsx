@@ -4,6 +4,7 @@ import { Header } from "../components/Header";
 import { MOCK_ACCOUNT } from "../mock";
 import { ecdsaSign } from "../../wallet/ecdsa";
 import { falconSign } from "../../wallet/falcon";
+import { sphincsSign } from "../../wallet/sphincs";
 import { withSigningKeys } from "../../wallet/keyring";
 import { WrongPasswordError } from "../../wallet/vault";
 
@@ -22,6 +23,7 @@ export function Send({ onBack }: { onBack: () => void }) {
         // dummy digest so the signers run inside the real extension.
         if (keys.ecdsa) ecdsaSign(keys.ecdsa, new Uint8Array(32));
         if (keys.falcon) await falconSign(keys.falcon, new Uint8Array(32));
+        if (keys.sphincs) await sphincsSign(keys.sphincs, new Uint8Array(32));
       });
       const ms = Math.round(performance.now() - started);
       setResult({ info: `Password OK, test-signed in ${ms} ms. Sending isn't built yet.` });
