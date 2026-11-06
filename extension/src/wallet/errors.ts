@@ -12,7 +12,7 @@ export function explain(e: unknown): string {
   if (!(e instanceof RpcError)) return e.message;
   const reason = e.reason;
   if (/exceeds MAX_VERIFY_GAS/.test(reason)) {
-    return "The VPR mempool refused it: its signature checks need more gas than the mempool allows. Is the mempool node running the current VPR build?";
+    return "The mempool refused it: its signature checks need more gas than its validation budget allows. Is the mempool node running the current Crypto-Agility build?";
   }
   if (/cannot cover its pending/.test(reason)) return "Not enough ETH for the amount plus the network fee.";
   // The hashes are checked first, so too few signatures means a raised signal the transaction didn't sign for.
@@ -21,5 +21,5 @@ export function explain(e: unknown): string {
     return "The wallet's schemes or safeguards on chain aren't the ones saved here, so it can't sign for them.";
   }
   if (/nonce/i.test(reason)) return "Another transaction from this wallet is still pending. Wait for it to be mined, then try again.";
-  return e.method === "eth_sendFrameTransaction" ? `The VPR mempool refused it: ${reason}` : reason;
+  return e.method === "eth_sendFrameTransaction" ? `The mempool refused it: ${reason}` : reason;
 }

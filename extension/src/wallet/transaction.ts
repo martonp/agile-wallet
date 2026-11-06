@@ -32,7 +32,7 @@ import { rpc } from "./rpc";
 import { signOffThread } from "./signer";
 import { SCHEMES, type Scheme } from "./schemes";
 
-// The EIP-8141 encoding of the devnet's ethrex build, which the VPR sidecar also speaks.
+// The EIP-8141 encoding of the devnet's ethrex build, which the Crypto-Agility sidecar also speaks.
 const PROFILE = getProfile("ethrex-eip8141-tracer");
 
 const WALLET_ABI = [
@@ -153,7 +153,7 @@ export function buildTransaction(ctx: TransferContext, action: Action, limits: L
 }
 
 // Fixed, generous gas limits: well above what the local devnet measured (Falcon at its expensive level, where
-// hash-to-point needs a ninth SHAKE block), so that sends don't fail on gas. The limits count against the VPR
+// hash-to-point needs a ninth SHAKE block), so that sends don't fail on gas. The limits count against the
 // mempool's validation budget; the sidecar's stand-in credits for Falcon and SPHINCS- are sized to cover them, and
 // an ECDSA-only wallet, which earns no credit, stays under 100,000.
 const DEPLOY_GAS = { base: 52_000n, ecdsa: 4_000n, sphincs: 6_000n, falcon: 20_000n };
@@ -344,7 +344,7 @@ export async function changeSchemesBeforeDeployment(password: string, account: A
 }
 
 // Signs once with the account's keys (and `extraKeys`, which `plan` may use), at fixed gas limits, and sends the
-// transaction through the VPR mempool, which simulates it before accepting it.
+// transaction through the Crypto-Agility Mempool, which simulates it before accepting it.
 async function submit(
   password: string,
   account: Account,

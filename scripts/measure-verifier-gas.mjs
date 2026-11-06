@@ -1,6 +1,6 @@
 // Measures one valid verification by each raw verifier (ZKNOX falcon8, SphincsC13Asm), as the nested call our
 // IVerifier adapter makes to it: that call frame's gasUsed in ethrex's callTracer, the number a per-call gasUsed in
-// the ERC-7562 frame trace reports. The VPR sidecar falls back to it while ethrex's frame tracer has none.
+// the ERC-7562 frame trace reports. The Crypto-Agility sidecar falls back to it while ethrex's frame tracer has none.
 // (Executed-opcode counts only exist in frame-transaction traces: send-wallet-tx.mjs prints them.)
 //
 //   node measure-verifier-gas.mjs <rpc url> [runs]

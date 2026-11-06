@@ -26,7 +26,7 @@ test("the contracts are the devnet deployment's", () => {
 
 test("loads the defaults until a network is saved", async () => {
   expect(await loadNetwork()).toEqual(LOCAL_DEVNET);
-  const custom = { ...LOCAL_DEVNET, rpcUrl: "https://rpc.example.org", sidecarUrl: "https://vpr.example.org/rpc" };
+  const custom = { ...LOCAL_DEVNET, rpcUrl: "https://rpc.example.org", sidecarUrl: "https://mempool.example.org/rpc" };
   await saveNetwork(custom);
   expect(await loadNetwork()).toEqual(custom);
 });
@@ -34,13 +34,13 @@ test("loads the defaults until a network is saved", async () => {
 test("rejects URLs that aren't", async () => {
   expect(invalidField(LOCAL_DEVNET)).toBeUndefined();
   expect(invalidField({ ...LOCAL_DEVNET, rpcUrl: "127.0.0.1:8545" })).toBe("Node RPC isn't an http(s) URL");
-  await expect(saveNetwork({ ...LOCAL_DEVNET, sidecarUrl: "ftp://x" })).rejects.toThrow("VPR mempool RPC");
+  await expect(saveNetwork({ ...LOCAL_DEVNET, sidecarUrl: "ftp://x" })).rejects.toThrow("Crypto-Agility Mempool RPC");
 });
 
 test("origin patterns cover both endpoints on any port", () => {
   expect(originPatterns(LOCAL_DEVNET)).toEqual(["http://127.0.0.1/*"]);
-  expect(originPatterns({ ...LOCAL_DEVNET, sidecarUrl: "https://vpr.example.org:8443/rpc" })).toEqual([
+  expect(originPatterns({ ...LOCAL_DEVNET, sidecarUrl: "https://mempool.example.org:8443/rpc" })).toEqual([
     "http://127.0.0.1/*",
-    "https://vpr.example.org/*",
+    "https://mempool.example.org/*",
   ]);
 });

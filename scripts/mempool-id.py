@@ -1,5 +1,6 @@
-"""VPR's mempool ID: the CIDv0 that `ipfs add --cid-version 0 docs/VPR.md` gives, for files under one
-256 KiB chunk (sha2-256 multihash of a dag-pb node whose Data is a UnixFS File holding the bytes)."""
+"""The Crypto-Agility Mempool's ID: the CIDv0 that `ipfs add --cid-version 0 docs/CRYPTO_AGILITY.md`
+gives, for files under one 256 KiB chunk (sha2-256 multihash of a dag-pb node whose Data is a UnixFS
+File holding the bytes)."""
 import hashlib, sys
 
 def varint(n):

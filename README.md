@@ -2,8 +2,9 @@
 
 A Chrome-extension wallet for an Ethereum smart account that can require any mix of signature
 schemes (today ECDSA, Falcon-512 and SPHINCS-) and change that mix over time. Its transactions are
-EIP-8141 frame transactions, carried by the **Virtual Precompile Rule (VPR)**: an alternative
-mempool in which post-quantum signature checks fit the validation budget, without staking.
+EIP-8141 frame transactions, carried by the **Crypto-Agility Mempool**: an alternative mempool in
+which post-quantum signature checks fit the validation budget and wallets can follow break signals,
+without staking.
 
 ## How it works
 
@@ -32,20 +33,22 @@ verifies; the wallet only checks its signer.
 | Falcon-512 | ZKNOX `falcon8` | 590k–635k |
 | SPHINCS- C13 | nconsigny's `SphincsC13Asm` | 97k |
 
-## The Virtual Precompile Rule
+## The Crypto-Agility Mempool
 
 The canonical EIP-8141 mempool limits a transaction's validation to `MAX_VERIFY_GAS` (100,000 gas).
 One Falcon or SPHINCS- verification uses that up on its own, while a native precompile would cost a
-few thousand (EIP-8052 prices Falcon at 3,000). VPR is the canonical mempool with two changes. First,
-calls to listed verifier functions count at their precompile price instead of their EVM cost. The
-extra allowance belongs to the verification code, which is the same for every sender, so nobody
-needs to stake. Second, validation may read the one slot of a listed break signal: a one-way flag a
-cryptographer raises when a scheme is broken, after which subscribed wallets also require a backup
-scheme. The slot changes at most once, so it can invalidate pending transactions at most once. The
-spec is [`docs/VPR.md`](docs/VPR.md), and its IPFS CIDv0 is the mempool's ID and gossip
-topic: `QmPPr52xDYmAATRiNio6mzNEj8WXmgiMmCt16HwNxWrCrU` (`python3 scripts/mempool-id.py docs/VPR.md`).
+few thousand (EIP-8052 prices Falcon at 3,000). The Crypto-Agility Mempool is the canonical mempool
+with two changes. First, virtual precompiles: calls to listed verifier functions count at their
+precompile price instead of their EVM cost. The extra allowance belongs to the verification code,
+which is the same for every sender, so nobody needs to stake. Second, break signals: validation may
+read the one slot of a listed break signal, a one-way flag a cryptographer raises when a scheme is
+broken, after which subscribed wallets also require a backup scheme. The slot changes at most once,
+so it can invalidate pending transactions at most once. The spec is
+[`docs/CRYPTO_AGILITY.md`](docs/CRYPTO_AGILITY.md), and its IPFS CIDv0 is the mempool's ID and gossip
+topic: `QmSG5KZqaeo44zEppvmQFG7sCWPr72s3rEKAbHsZQwfZDg`
+(`python3 scripts/mempool-id.py docs/CRYPTO_AGILITY.md`).
 
-The rule runs in our fork of the alt-mempool sidecar (`sidecar/`). It needs ethrex to report the gas
+The mempool's rules run in our fork of the alt-mempool sidecar (`sidecar/`). It needs ethrex to report the gas
 of each call in its trace ([martonp/ethrex](https://github.com/martonp/ethrex), branch
 `vpr-call-gas`); until that is deployed, the sidecar substitutes measured costs.
 
@@ -55,10 +58,10 @@ of each call in its trace ([martonp/ethrex](https://github.com/martonp/ethrex), 
 |---|---|
 | `contracts/` | Foundry: verifiers, `AgileWallet`, factory, `BreakSignal`, deploy script |
 | `extension/` | Chrome MV3 extension (React, Vite); see its README |
-| `sidecar/` | Alt-mempool sidecar fork with the VPR rule |
+| `sidecar/` | Alt-mempool sidecar fork with the Crypto-Agility Mempool's rules |
 | `scripts/` | Devnet scripts: verifier gas measurement, end-to-end transaction, mempool ID |
 | `signal-ui/` | The cryptographer's page for raising a break signal |
-| `docs/VPR.md` | The VPR spec |
+| `docs/CRYPTO_AGILITY.md` | The Crypto-Agility Mempool's spec |
 
 ## Running the demo
 
@@ -72,10 +75,10 @@ Each step starts from the repository root.
 # 2. Contracts (deployed code costs state gas after Amsterdam, hence the multiplier)
 (cd contracts && forge build && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
   --private-key $FUNDED_KEY --broadcast --slow --legacy --gas-estimate-multiplier 900)
-# 3. The VPR sidecar, in its own terminal; it gossips on the VPR topic
-#    (another VPR node joins with --p2p.bootEnrs <the ENR this one logs>)
+# 3. The Crypto-Agility sidecar, in its own terminal; it gossips on the mempool's topic
+#    (another node joins with --p2p.bootEnrs <the ENR this one logs>)
 (cd sidecar && bun install && bun run build && ./skandha node \
-  --configFile ../scripts/vpr-sidecar.config.json --api.port 14338 --api.wsPort 14338 \
+  --configFile ../scripts/crypto-agility-sidecar.config.json --api.port 14338 --api.wsPort 14338 \
   --p2p.port 4338 --p2p.enrPort 4338 --redirectRpc --executor.bundlingMode auto)
 # 4. A wallet transaction through it
 (cd scripts && npm install && FUNDER_KEY=$FUNDED_KEY SCHEMES=sphincs node send-wallet-tx.mjs)
@@ -96,9 +99,10 @@ cast send 0x108c7aD6Dd81EA131A761B3Db9F817056D26941c "signalBroken()" --private-
 ## Status
 
 - On a local devnet, a SPHINCS- wallet's first transaction (deploy and transfer) and a second
-  transfer were admitted through VPR and mined. The canonical mempool would reject both. With two
-  VPR nodes peered, a transaction sent to one was gossiped on the VPR topic to the other.
-- Wallets with Falcon (alone or with ECDSA and SPHINCS-) send through VPR only thanks to the
+  transfer were admitted through the Crypto-Agility Mempool and mined. The canonical mempool would
+  reject both. With two of its nodes peered, a transaction sent to one was gossiped on its topic to
+  the other.
+- Wallets with Falcon (alone or with ECDSA and SPHINCS-) send through it only thanks to the
   sidecar's stand-in credit, 750,000 gas per Falcon call, which also covers the wallet's margin for
   Falcon's varying cost (588k–636k). With exact per-call gas, a Falcon wallet's first (deploying)
   transaction would need about 110,000–120,000 of the 100,000 budget.

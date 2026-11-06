@@ -1,4 +1,4 @@
-// End-to-end demo: sends ETH from an Agile Wallet through the VPR sidecar. The first run also deploys the wallet
+// End-to-end demo: sends ETH from an Agile Wallet through the Crypto-Agility sidecar. The first run also deploys the wallet
 // (deploy frame + the owner's protocol SECP256K1 signature); later runs reuse it.
 //
 //   FUNDER_KEY=0x… node send-wallet-tx.mjs [sidecar rpc] [ethrex rpc]
@@ -110,7 +110,7 @@ async function sign(unsigned) {
 const probe = await rpc(rpcUrl, "ethrex_simulateFrameTransaction", [tx.encodeTx(profile, await sign(build({ deployGas: 1_000_000n, verifyGas: 3_000_000n }))), "latest", { trace: true }]);
 if (!probe.frames) throw new Error(`simulation failed: ${probe.executionError}`);
 
-// The raw verifiers' calls as the VPR sidecar sees them in the ERC-7562 trace.
+// The raw verifiers' calls as the sidecar sees them in the ERC-7562 trace.
 const opcodes = (n) => Object.values(n.usedOpcodes ?? {}).reduce((a, b) => a + b, 0) + (n.calls ?? []).reduce((a, c) => a + opcodes(c), 0);
 const listed = { [deployment.falcon8.toLowerCase()]: "falcon8", [deployment.sphincsC13.toLowerCase()]: "sphincsC13" };
 const report = (n) => (listed[n.to?.toLowerCase()] ? [`${listed[n.to.toLowerCase()]}: ${opcodes(n)} opcodes, outOfGas ${n.outOfGas}, gasUsed ${n.gasUsed ?? "not reported"}`] : (n.calls ?? []).flatMap(report));
@@ -118,7 +118,7 @@ for (const entry of probe.erc7562Trace ?? []) for (const line of report(entry.ro
 const used = probe.frames.map((f) => BigInt(f.gasUsed));
 const margin = (g) => g + g / 50n + 2_000n;
 // Re-signing changes the Falcon signature, whose hash-to-point needs 8 or 9 SHAKE blocks (~48k gas apart):
-// cover the expensive case. The VPR sidecar's Falcon credit absorbs the extra limit.
+// cover the expensive case. The sidecar's Falcon credit absorbs the extra limit.
 const falconMargin = required.includes("falcon") ? 60_000n : 0n;
 const verifyGas = (g) => margin(g) + falconMargin;
 const limits = deployed ? { deployGas: 0n, verifyGas: verifyGas(used[0]) } : { deployGas: margin(used[0]), verifyGas: verifyGas(used[1]) };
@@ -127,7 +127,7 @@ if (process.env.DRY_RUN) process.exit(0);
 
 const signed = await sign(build(limits));
 const hash = tx.txHash(profile, signed);
-console.log(`sending ${hash} to the VPR sidecar`);
+console.log(`sending ${hash} to the Crypto-Agility sidecar`);
 console.log("accepted:", await rpc(sidecarUrl, "eth_sendFrameTransaction", [toWire(signed)]));
 
 for (let i = 0; i < 40; i++) {

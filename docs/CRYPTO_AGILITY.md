@@ -1,4 +1,4 @@
-# Virtual Precompile Rule (VPR)
+# Crypto-Agility Mempool
 
 Mempool ID: the IPFS CIDv0 of this document.
 

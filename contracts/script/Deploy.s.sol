@@ -21,7 +21,7 @@ interface IAgileWalletFactory {
 contract Deploy is Script {
     address private constant CREATE2_PROXY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     bytes32 private constant SALT = bytes32(0);
-    /// Where the signal lands; mempools list it by this address (sidecar breakSignals.ts, docs/VPR.md).
+    /// Where the signal lands; mempools list it by this address (sidecar breakSignals.ts, docs/CRYPTO_AGILITY.md).
     address private constant LISTED_SIGNAL = 0x108c7aD6Dd81EA131A761B3Db9F817056D26941c;
     /// The devnet cryptographer: Anvil/Hardhat test account #1, a public test key. Fund it before it signals.
     address private constant CRYPTOGRAPHER = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
@@ -46,7 +46,7 @@ contract Deploy is Script {
             )
         );
         // Its code includes the metadata hash, so any edit to BreakSignal.sol or the compiler settings moves it.
-        require(ecdsaBreakSignal == LISTED_SIGNAL, "signal moved: update the sidecar's listing and docs/VPR.md");
+        require(ecdsaBreakSignal == LISTED_SIGNAL, "signal moved: update the sidecar's listing and docs/CRYPTO_AGILITY.md");
         vm.stopBroadcast();
 
         string memory o = "deployment";

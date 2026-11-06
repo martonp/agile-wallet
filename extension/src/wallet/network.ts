@@ -5,7 +5,7 @@ import type { Scheme } from "./schemes";
 // Where the wallet reads the chain and sends transactions.
 export interface Network {
   rpcUrl: string; // an EIP-8141 node: reads and simulation
-  sidecarUrl: string; // a VPR mempool node: sending
+  sidecarUrl: string; // a Crypto-Agility Mempool node: sending
 }
 
 // The local devnet from the README.
@@ -25,7 +25,7 @@ export const CONTRACTS = {
 };
 
 // The break signals a wallet can subscribe to: one-way flags a cryptographer raises when a scheme is broken. Only
-// signals the VPR mempool lists, since validation reads them and the mempool rejects reads of any other.
+// signals the Crypto-Agility Mempool lists, since validation reads them and the mempool rejects reads of any other.
 export interface BreakSignal {
   address: string;
   breaks: Scheme;
@@ -66,7 +66,7 @@ export function invalidField(network: Network): string | undefined {
 
 export const LABELS: Record<keyof Network, string> = {
   rpcUrl: "Node RPC",
-  sidecarUrl: "VPR mempool RPC",
+  sidecarUrl: "Crypto-Agility Mempool RPC",
 };
 
 // Asks each endpoint for its chain id and checks that the wallet's contracts are deployed; one line per finding.

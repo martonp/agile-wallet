@@ -38,7 +38,7 @@ export function SendProgress({ tracker }: { tracker: Tracker }) {
         </div>
       ))}
       <div className="progress-row" style={{ marginTop: 6 }}>
-        <span>VPR mempool</span>
+        <span>Mempool</span>
         {phase === "sending" ? (
           failed ? <Status icon="failed">rejected</Status> : <Status icon="active">sending…</Status>
         ) : after("sending") ? (

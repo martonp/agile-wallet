@@ -67,7 +67,7 @@ test("fixed limits are well above what the devnet measured, and an ECDSA-only wa
   expect(fixedLimits(all, false, transfer).deploy).toBeGreaterThan(65_980n + 10_000n);
   expect(fixedLimits(all, true, transfer).verify).toBeGreaterThan(814_427n + 50_000n); // an expensive Falcon signature, deployed
 
-  // No verifier call, so no VPR credit: the limits plus the SECP256K1 signature cost (2,900) must stay under 100,000.
+  // No verifier call, so no virtual precompile credit: the limits plus the SECP256K1 signature cost (2,900) must stay under 100,000.
   const ecdsa = fixedLimits((await context(["ecdsa"], false)).account, false, transfer);
   expect(ecdsa.deploy + ecdsa.verify + 2_900n).toBeLessThan(100_000n);
 });
@@ -162,7 +162,7 @@ test("a raised backup that is already a scheme adds no signature", async () => {
 });
 
 test("an ECDSA wallet with a rule that isn't raised fits the validation budget without credit", async () => {
-  // No verifier call, so no VPR credit: VERIFY plus the SECP256K1 signature cost (2,900) must stay under 100,000.
+  // No verifier call, so no virtual precompile credit: VERIFY plus the SECP256K1 signature cost (2,900) must stay under 100,000.
   const ctx = await subscribed();
   expect(fixedLimits(ctx.account, true, transfer).verify + 2_900n).toBeLessThan(100_000n);
   const unsubscribe: Action = { type: "configure", schemes: ctx.account.schemes, rules: [] };
