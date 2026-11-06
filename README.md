@@ -36,11 +36,14 @@ verifies; the wallet only checks its signer.
 
 The canonical EIP-8141 mempool limits a transaction's validation to `MAX_VERIFY_GAS` (100,000 gas).
 One Falcon or SPHINCS- verification uses that up on its own, while a native precompile would cost a
-few thousand (EIP-8052 prices Falcon at 3,000). VPR is the canonical mempool with one change: calls
-to listed verifier functions count at their precompile price instead of their EVM cost. The extra
-allowance belongs to the verification code, which is the same for every sender, so nobody needs to
-stake. The spec is [`docs/VPR.md`](docs/VPR.md), and its IPFS CIDv0 is the mempool's ID and gossip
-topic: `QmRD2duBXp1tfh2RXo1accZbk1VE61q9ppYkAtNjpf81cd` (`python3 scripts/mempool-id.py docs/VPR.md`).
+few thousand (EIP-8052 prices Falcon at 3,000). VPR is the canonical mempool with two changes. First,
+calls to listed verifier functions count at their precompile price instead of their EVM cost. The
+extra allowance belongs to the verification code, which is the same for every sender, so nobody
+needs to stake. Second, validation may read the one slot of a listed break signal: a one-way flag a
+cryptographer raises when a scheme is broken, after which subscribed wallets also require a backup
+scheme. The slot changes at most once, so it can invalidate pending transactions at most once. The
+spec is [`docs/VPR.md`](docs/VPR.md), and its IPFS CIDv0 is the mempool's ID and gossip
+topic: `QmPPr52xDYmAATRiNio6mzNEj8WXmgiMmCt16HwNxWrCrU` (`python3 scripts/mempool-id.py docs/VPR.md`).
 
 The rule runs in our fork of the alt-mempool sidecar (`sidecar/`). It needs ethrex to report the gas
 of each call in its trace ([martonp/ethrex](https://github.com/martonp/ethrex), branch

@@ -1,9 +1,9 @@
 {
   "entryPoints": ["0x00000000000000000000000000000000000000aa"],
   "canonicalEntryPoint": "0x00000000000000000000000000000000000000aa",
-  "standardMempoolId": "QmRD2duBXp1tfh2RXo1accZbk1VE61q9ppYkAtNjpf81cd",
+  "standardMempoolId": "QmPPr52xDYmAATRiNio6mzNEj8WXmgiMmCt16HwNxWrCrU",
   "supportedMempools": [
-    { "mempoolId": "QmRD2duBXp1tfh2RXo1accZbk1VE61q9ppYkAtNjpf81cd", "entryPoint": "0x00000000000000000000000000000000000000aa" }
+    { "mempoolId": "QmPPr52xDYmAATRiNio6mzNEj8WXmgiMmCt16HwNxWrCrU", "entryPoint": "0x00000000000000000000000000000000000000aa" }
   ],
   "rpcEndpoint": "http://127.0.0.1:8545",
   "rpcEndpointSubmit": "http://127.0.0.1:8545"
