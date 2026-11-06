@@ -1,15 +1,23 @@
+import { deriveAccount, loadAccount, saveAccount } from "./account";
 import { deriveSigningKeys, wipeKeys, type SigningKeys } from "./derive";
 import { entropyToSeed } from "./mnemonic";
 import type { Scheme } from "./schemes";
 import { decryptSecret, encryptSecret, loadVault, saveVault } from "./vault";
 
-// The vault holds the mnemonic's entropy, not the phrase: bytes can be wiped, strings can't.
-export async function createWallet(password: string, entropy: Uint8Array): Promise<void> {
+// The vault holds the mnemonic's entropy, not the phrase: bytes can be wiped, strings can't. The account (owner
+// and public keys of the chosen schemes) is stored in the clear next to it.
+export async function createWallet(password: string, entropy: Uint8Array, schemes: Scheme[]): Promise<void> {
+  const seed = entropyToSeed(entropy);
+  try {
+    await saveAccount(await deriveAccount(seed, schemes));
+  } finally {
+    seed.fill(0);
+  }
   await saveVault(await encryptSecret(password, entropy));
 }
 
 export async function hasWallet(): Promise<boolean> {
-  return (await loadVault()) !== undefined;
+  return (await loadVault()) !== undefined && (await loadAccount()) !== undefined;
 }
 
 // The only way to reach private keys: decrypt, derive just the keys `schemes` need, run `sign`,
