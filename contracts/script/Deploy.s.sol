@@ -9,8 +9,8 @@ interface IAgileWalletFactory {
 
 /// Deploys everything through the deterministic CREATE2 proxy (0x4e59…956c), so the addresses are the same on
 /// every chain that has it, and writes them to deployments/<chain id>.json. Skips contracts already deployed.
-/// Creation code comes from the build artifacts: FalconVerifier needs solc 0.8.30 and AgileWallet 0.8.28, so
-/// they cannot share this script's compilation unit.
+/// Creation code comes from the build artifacts (run `forge build` first): ZKNOX_falcon8 needs solc 0.8.30 and
+/// AgileWallet 0.8.28, so they cannot share this script's compilation unit.
 ///
 ///   forge script script/Deploy.s.sol --rpc-url <rpc> --private-key <key> --broadcast --slow
 contract Deploy is Script {
@@ -23,22 +23,25 @@ contract Deploy is Script {
         bytes memory f1600Init = abi.encodePacked(hex"61", uint16(f1600.length), hex"8061000b5f395ff3", f1600);
 
         vm.startBroadcast();
+        // The verifiers themselves, which mempool rules can list, then our IVerifier adapters over them.
         address helper = _deploy(f1600Init);
+        address falcon8 = _deploy(abi.encodePacked(vm.getCode("ZKNOX_falcon8.sol:ZKNOX_falcon8"), abi.encode(helper)));
+        address sphincsC13 = _deploy(vm.getCode("SPHINCs-C13Asm.sol:SphincsC13Asm"));
         address ecdsa = _deploy(vm.getCode("EcdsaVerifier.sol:EcdsaVerifier"));
-        address falcon = _deploy(abi.encodePacked(vm.getCode("FalconVerifier.sol:FalconVerifier"), abi.encode(helper)));
-        address sphincs = _deploy(vm.getCode("SphincsVerifier.sol:SphincsVerifier"));
+        address falcon = _deploy(abi.encodePacked(vm.getCode("FalconVerifier.sol:FalconVerifier"), abi.encode(falcon8)));
+        address sphincs = _deploy(abi.encodePacked(vm.getCode("SphincsVerifier.sol:SphincsVerifier"), abi.encode(sphincsC13)));
         address factory = _deploy(vm.getCode("AgileWalletFactory.sol:AgileWalletFactory"));
-        address probe = _deploy(vm.getCode("GasProbe.sol:GasProbe"));
         vm.stopBroadcast();
 
         string memory o = "deployment";
         vm.serializeAddress(o, "f1600Helper", helper);
+        vm.serializeAddress(o, "falcon8", falcon8);
+        vm.serializeAddress(o, "sphincsC13", sphincsC13);
         vm.serializeAddress(o, "ecdsaVerifier", ecdsa);
         vm.serializeAddress(o, "falconVerifier", falcon);
         vm.serializeAddress(o, "sphincsVerifier", sphincs);
         vm.serializeAddress(o, "factory", factory);
-        vm.serializeAddress(o, "implementation", IAgileWalletFactory(factory).implementation());
-        string memory json = vm.serializeAddress(o, "gasProbe", probe);
+        string memory json = vm.serializeAddress(o, "implementation", IAgileWalletFactory(factory).implementation());
         vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), ".json"));
     }
 

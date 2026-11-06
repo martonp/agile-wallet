@@ -4,7 +4,6 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {AgileWallet} from "../src/AgileWallet.sol";
 import {AgileWalletFactory} from "../src/AgileWalletFactory.sol";
-import {EcdsaVerifier} from "../src/EcdsaVerifier.sol";
 import {IVerifier} from "../src/IVerifier.sol";
 import {FrameTxMock, MockVerifier} from "./mocks/FrameTxMock.sol";
 
@@ -20,7 +19,8 @@ contract AgileWalletTest is Test {
 
     FrameTxMock private frameTx = new FrameTxMock();
     AgileWalletFactory private factory = new AgileWalletFactory();
-    IVerifier private ecdsa = new EcdsaVerifier();
+    // deployCode, not an import: EcdsaVerifier then compiles with one solc version, so its CREATE2 address is fixed
+    IVerifier private ecdsa = IVerifier(deployCode("EcdsaVerifier.sol:EcdsaVerifier"));
     MockVerifier private pq = new MockVerifier();
 
     uint256 private ecdsaPrivateKey = 0xA11CE;
