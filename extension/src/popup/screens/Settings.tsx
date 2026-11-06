@@ -16,13 +16,22 @@ const FIELDS: (keyof Network)[] = ["rpcUrl", "sidecarUrl"];
 
 export function Settings({ onBack }: { onBack: () => void }) {
   const [network, setNetwork] = useState<Network>();
+  const [saved, setSaved] = useState<Network>();
+  const [confirmLeave, setConfirmLeave] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ error?: string; info?: string; lines?: string[] }>({});
 
   useEffect(() => {
-    loadNetwork().then(setNetwork);
+    loadNetwork().then((loaded) => {
+      setNetwork(loaded);
+      setSaved(loaded);
+    });
   }, []);
   if (!network) return null;
+
+  // Leaving with edits that aren't saved asks first.
+  const dirty = FIELDS.some((field) => network[field] !== saved?.[field]);
+  const back = () => (dirty ? setConfirmLeave(true) : onBack());
 
   // Both actions ask for host access first, while the click still counts as a user gesture.
   async function withAccess(run: () => Promise<void>) {
@@ -42,6 +51,7 @@ export function Settings({ onBack }: { onBack: () => void }) {
   const save = () =>
     withAccess(async () => {
       await saveNetwork(network);
+      setSaved(network);
       setResult({ info: "Saved." });
     });
   const test = () =>
@@ -52,7 +62,7 @@ export function Settings({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="screen">
-      <Header title="Network" onBack={onBack} />
+      <Header title="Network" onBack={back} />
       {FIELDS.map((field) => (
         <div key={field}>
           <p className="label">{LABELS[field]}</p>
@@ -75,6 +85,19 @@ export function Settings({ onBack }: { onBack: () => void }) {
             <li key={line}>{line}</li>
           ))}
         </ul>
+      )}
+      {confirmLeave && (
+        <div className="warning">
+          Discard your changes?
+          <div className="row" style={{ marginTop: 8 }}>
+            <button className="btn btn-secondary" onClick={() => setConfirmLeave(false)}>
+              Keep editing
+            </button>
+            <button className="btn btn-primary" onClick={onBack}>
+              Discard
+            </button>
+          </div>
+        </div>
       )}
       <div className="row spacer">
         <button className="btn btn-secondary" disabled={busy} onClick={test}>
