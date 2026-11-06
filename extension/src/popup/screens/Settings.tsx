@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { explain } from "../../wallet/errors";
 import {
+  EXPLORER_LABEL,
   LABEL,
   type Network,
   checkNetwork,
@@ -27,7 +28,7 @@ export function Settings({ onBack }: { onBack: () => void }) {
   if (!network) return null;
 
   // Leaving with edits that aren't saved asks first.
-  const dirty = network.url !== saved?.url;
+  const dirty = network.url !== saved?.url || network.explorer !== saved?.explorer;
   const back = () => (dirty ? setConfirmLeave(true) : onBack());
 
   // Both actions ask for host access first, while the click still counts as a user gesture.
@@ -66,10 +67,23 @@ export function Settings({ onBack }: { onBack: () => void }) {
           className="field mono"
           value={network.url}
           spellCheck={false}
-          onChange={(e) => setNetwork({ url: e.target.value.trim() })}
+          onChange={(e) => setNetwork({ ...network, url: e.target.value.trim() })}
         />
         <p className="hint" style={{ marginTop: 4 }}>
           Transactions go to this node, and it forwards the wallet's reads to its EIP-8141 node.
+        </p>
+      </div>
+      <div>
+        <p className="label">{EXPLORER_LABEL}</p>
+        <input
+          className="field mono"
+          value={network.explorer ?? ""}
+          spellCheck={false}
+          placeholder="none"
+          onChange={(e) => setNetwork({ ...network, explorer: e.target.value.trim() })}
+        />
+        <p className="hint" style={{ marginTop: 4 }}>
+          Transaction hashes open here, in the mempool explorer. Leave it empty for no links.
         </p>
       </div>
       {result.error && <p className="error">{result.error}</p>}

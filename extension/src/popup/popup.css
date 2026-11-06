@@ -349,3 +349,13 @@ textarea {
   margin: 0;
   font-weight: 600;
 }
+
+/* A transaction hash that opens in the explorer. */
+.tx-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}

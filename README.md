@@ -77,10 +77,14 @@ Each step starts from the repository root.
   --private-key $FUNDED_KEY --broadcast --slow --legacy --gas-estimate-multiplier 900)
 # 3. The Crypto-Agility sidecar, in its own terminal; it gossips on the mempool's topic
 #    (another node joins with --p2p.bootEnrs <the ENR this one logs>). --redirectRpc forwards the wallet's node
-#    reads to ethrex, so the extension needs only this node's URL.
+#    reads to ethrex, so the extension needs only this node's URL; --explorer.enable serves the explorer.
 (cd sidecar && bun install && bun run build && ./skandha node \
   --configFile ../scripts/crypto-agility-sidecar.config.json --api.port 14338 --api.wsPort 14338 \
-  --p2p.port 4338 --p2p.enrPort 4338 --redirectRpc --executor.bundlingMode auto)
+  --p2p.port 4338 --p2p.enrPort 4338 --redirectRpc --explorer.enable --executor.bundlingMode auto)
+# 3b. The mempool explorer, in its own terminal, on the port the extension links to (Settings, Explorer)
+(cd sidecar/packages/devnet-ui && \
+  VITE_EXPLORER_INSTANCES='[{"name":"Crypto-Agility node","url":"http://127.0.0.1:14338/rpc"}]' \
+  bun run dev --port 5182 --strictPort)
 # 4. A wallet transaction through it
 (cd scripts && npm install && FUNDER_KEY=$FUNDED_KEY SCHEMES=sphincs node send-wallet-tx.mjs)
 # 5. Break signals: an ECDSA wallet subscribes with SPHINCS- as its backup, then sends with ECDSA alone

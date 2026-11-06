@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Header } from "./Header";
 import { SendProgress, type Tracker } from "./SendProgress";
-import { shortAddress } from "../format";
+import { TxHash } from "./TxHash";
 import type { Sent } from "../../wallet/transaction";
 
 // The screen a transaction is signed and sent on: what it does, each signature as it is made, the mempool and the
@@ -47,7 +47,7 @@ export function Submission({
       {sent && (
         <p className={sent.ok ? "hint" : "error"}>
           {sent.ok ? label : "Mined, but a frame failed"} in block {sent.block.toString()}:{" "}
-          <span className="mono">{shortAddress(sent.hash)}</span>
+          <TxHash hash={sent.hash} />
         </p>
       )}
       {sent && (sent.ok ? note : failed) && <p className={sent.ok ? "hint" : "error"}>{sent.ok ? note : failed}</p>}

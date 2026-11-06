@@ -3,6 +3,7 @@ import { IconCheck, IconCopy, IconLoader2, IconX } from "@tabler/icons-react";
 import { Header } from "../components/Header";
 import { SchemeChip } from "../components/SchemeChip";
 import { shortAddress } from "../format";
+import { TxHash } from "../components/TxHash";
 import { SCHEME_INFO } from "../schemes";
 import { kindOf } from "../transactions";
 import { formatEth } from "../../wallet/account";
@@ -100,7 +101,7 @@ export function TransactionDetails({ index, hash, onBack }: { index: number; has
       <div className="spacer">
         <p className="label">Transaction hash</p>
         <div className="row tx-hash">
-          <span className="mono">{copied === false ? hash : shortAddress(hash)}</span>
+          <TxHash hash={hash} full={copied === false} />
           <button className="icon-button" onClick={copy} aria-label="Copy transaction hash">
             {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
           </button>

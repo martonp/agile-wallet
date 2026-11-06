@@ -6,11 +6,13 @@ import type { Scheme } from "./schemes";
 // and forwards the wallet's reads to its EIP-8141 node (the sidecar's --redirectRpc).
 export interface Network {
   url: string;
+  explorer?: string; // the sidecar's devnet-ui explorer, for links to transactions; none when empty
 }
 
 // The local devnet from the README.
 export const LOCAL_DEVNET: Network = {
   url: "http://127.0.0.1:14338/rpc",
+  explorer: "http://localhost:5182",
 };
 
 // The wallet's contracts (contracts/deployments/1337.json). They are deployed through the deterministic CREATE2
@@ -46,11 +48,17 @@ export const VERIFIERS: Record<Scheme, string> = {
 const KEY = "network";
 
 // What storage may hold: settings from before kept a node URL as well, and the mempool URL as `sidecarUrl`.
-type StoredNetwork = { url?: string; sidecarUrl?: string };
+type StoredNetwork = { url?: string; sidecarUrl?: string; explorer?: string };
 
 export async function loadNetwork(): Promise<Network> {
   const stored = (await chrome.storage.local.get(KEY))[KEY] as StoredNetwork | undefined;
-  return { url: stored?.url ?? stored?.sidecarUrl ?? LOCAL_DEVNET.url };
+  return { url: stored?.url ?? stored?.sidecarUrl ?? LOCAL_DEVNET.url, explorer: stored?.explorer ?? LOCAL_DEVNET.explorer };
+}
+
+// A transaction's page in the explorer, as the mempool node the wallet uses saw it; undefined without an explorer.
+export function explorerLink(network: Network, hash: string): string | undefined {
+  if (!network.explorer) return undefined;
+  return `${network.explorer.replace(/\/+$/, "")}/tx/${encodeURIComponent(hash)}?node=${encodeURIComponent(network.url)}`;
 }
 
 export async function saveNetwork(network: Network): Promise<void> {
@@ -59,12 +67,16 @@ export async function saveNetwork(network: Network): Promise<void> {
   await chrome.storage.local.set({ [KEY]: network });
 }
 
-// What's wrong with the URL, as a message; undefined when it's a valid http(s) URL.
+// What's wrong with the URLs, as a message; undefined when the node's is a valid http(s) URL and the explorer's is
+// one or empty.
 export function invalidField(network: Network): string | undefined {
-  if (!/^https?:$/.test(urlOrUndefined(network.url)?.protocol ?? "")) return `${LABEL} isn't an http(s) URL`;
+  const http = (value: string) => /^https?:$/.test(urlOrUndefined(value)?.protocol ?? "");
+  if (!http(network.url)) return `${LABEL} isn't an http(s) URL`;
+  if (network.explorer && !http(network.explorer)) return `${EXPLORER_LABEL} isn't an http(s) URL`;
 }
 
 export const LABEL = "Crypto-Agility Mempool RPC";
+export const EXPLORER_LABEL = "Explorer";
 
 // Asks the node for its chain id, checks that it forwards node reads, and that the wallet's contracts are deployed;
 // one line per finding.
