@@ -24,7 +24,7 @@ const zeroed = (keys: SigningKeys) => Object.values(keys).every((k) => k.every((
 
 test("creates a wallet and signs with the password", async () => {
   expect(await hasWallet()).toBe(false);
-  await createWallet("pw", generateEntropy(), ["ecdsa"]);
+  await createWallet("pw", generateEntropy(), ["ecdsa"], null);
   expect(await hasWallet()).toBe(true);
 
   let seen: SigningKeys = {};
@@ -39,7 +39,7 @@ test("creates a wallet and signs with the password", async () => {
 });
 
 test("wipes keys when signing throws", async () => {
-  await createWallet("pw", generateEntropy(), ["ecdsa"]);
+  await createWallet("pw", generateEntropy(), ["ecdsa"], null);
   let seen: SigningKeys = {};
   const failing = withSigningKeys("pw", ["sphincs"], (keys) => {
     seen = keys;
@@ -50,14 +50,14 @@ test("wipes keys when signing throws", async () => {
 });
 
 test("rejects a wrong password without calling sign", async () => {
-  await createWallet("pw", generateEntropy(), ["ecdsa"]);
+  await createWallet("pw", generateEntropy(), ["ecdsa"], null);
   let called = false;
   await expect(withSigningKeys("nope", ["ecdsa"], () => (called = true))).rejects.toBeInstanceOf(WrongPasswordError);
   expect(called).toBe(false);
 });
 
 test("adds accounts from the same seed, each with its own keys, and selects the new one", async () => {
-  await createWallet("pw", generateEntropy(), ["ecdsa"]);
+  await createWallet("pw", generateEntropy(), ["ecdsa"], null);
   const added = await addAccount("pw", "Savings", ["ecdsa"]);
   expect(added).toMatchObject({ index: 1, name: "Savings" });
   expect(await selectedAccount()).toBe(1);
