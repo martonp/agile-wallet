@@ -1,6 +1,6 @@
-import { beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import deployment from "../../../contracts/deployments/1337.json";
-import { CONTRACTS, LOCAL_DEVNET, invalidField, loadNetwork, originPatterns, saveNetwork } from "./network";
+import { CONTRACTS, LOCAL_DEVNET, checkNetwork, invalidField, loadNetwork, originPatterns, saveNetwork } from "./network";
 
 // In-memory stand-in for chrome.storage.local.
 beforeEach(() => {
@@ -16,6 +16,8 @@ beforeEach(() => {
   };
 });
 
+afterEach(() => vi.unstubAllGlobals());
+
 test("the contracts are the devnet deployment's", () => {
   expect(CONTRACTS.factory).toBe(deployment.factory);
   expect(CONTRACTS.implementation).toBe(deployment.implementation);
@@ -26,21 +28,56 @@ test("the contracts are the devnet deployment's", () => {
 
 test("loads the defaults until a network is saved", async () => {
   expect(await loadNetwork()).toEqual(LOCAL_DEVNET);
-  const custom = { ...LOCAL_DEVNET, rpcUrl: "https://rpc.example.org", sidecarUrl: "https://mempool.example.org/rpc" };
-  await saveNetwork(custom);
-  expect(await loadNetwork()).toEqual(custom);
+  await saveNetwork({ url: "https://mempool.example.org/rpc" });
+  expect(await loadNetwork()).toEqual({ url: "https://mempool.example.org/rpc" });
+});
+
+test("settings from before, with a node URL too, keep the mempool URL", async () => {
+  await (globalThis as any).chrome.storage.local.set({
+    network: { rpcUrl: "http://127.0.0.1:8545", sidecarUrl: "http://127.0.0.1:14340/rpc" },
+  });
+  expect(await loadNetwork()).toEqual({ url: "http://127.0.0.1:14340/rpc" });
 });
 
 test("rejects URLs that aren't", async () => {
   expect(invalidField(LOCAL_DEVNET)).toBeUndefined();
-  expect(invalidField({ ...LOCAL_DEVNET, rpcUrl: "127.0.0.1:8545" })).toBe("Node RPC isn't an http(s) URL");
-  await expect(saveNetwork({ ...LOCAL_DEVNET, sidecarUrl: "ftp://x" })).rejects.toThrow("Crypto-Agility Mempool RPC");
+  expect(invalidField({ url: "127.0.0.1:14338" })).toBe("Crypto-Agility Mempool RPC isn't an http(s) URL");
+  await expect(saveNetwork({ url: "ftp://x" })).rejects.toThrow("Crypto-Agility Mempool RPC");
 });
 
-test("origin patterns cover both endpoints on any port", () => {
+test("the origin pattern covers the node's host on any port", () => {
   expect(originPatterns(LOCAL_DEVNET)).toEqual(["http://127.0.0.1/*"]);
-  expect(originPatterns({ ...LOCAL_DEVNET, sidecarUrl: "https://mempool.example.org:8443/rpc" })).toEqual([
-    "http://127.0.0.1/*",
-    "https://mempool.example.org/*",
-  ]);
+  expect(originPatterns({ url: "https://mempool.example.org:8443/rpc" })).toEqual(["https://mempool.example.org/*"]);
+});
+
+test("the connection check says when the mempool node doesn't forward node reads", async () => {
+  const node = (forwards: boolean) =>
+    vi.stubGlobal("fetch", async (_url: string, init: RequestInit) => {
+      const { method } = JSON.parse(init.body as string);
+      const reply =
+        method === "eth_chainId"
+          ? { result: "0x539" }
+          : forwards
+            ? { result: method === "eth_blockNumber" ? "0x10" : "0x60" }
+            : { error: { message: `Method ${method} is not supported` } };
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, ...reply }));
+    });
+  node(true);
+  expect(await checkNetwork(LOCAL_DEVNET)).toEqual({
+    ok: true,
+    lines: ["Crypto-Agility Mempool RPC: chain 1337", "Node reads: forwarded, block 16", "Wallet contracts: deployed"],
+  });
+  node(false);
+  const { ok, lines } = await checkNetwork(LOCAL_DEVNET);
+  expect(ok).toBe(false);
+  expect(lines).toEqual(["Crypto-Agility Mempool RPC: chain 1337", "Node reads: not forwarded: the mempool node needs --redirectRpc"]);
+});
+
+test("the connection check reports a node that can't be reached as such", async () => {
+  vi.stubGlobal("fetch", async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  const { ok, lines } = await checkNetwork(LOCAL_DEVNET);
+  expect(ok).toBe(false);
+  expect(lines).toEqual(["Crypto-Agility Mempool RPC: Can't reach 127.0.0.1:14338", "Node reads: Can't reach 127.0.0.1:14338"]);
 });

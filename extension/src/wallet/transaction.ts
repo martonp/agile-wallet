@@ -446,7 +446,7 @@ async function submit(
   await onProgress({ type: "sending" });
   const hash = tx.txHash(PROFILE, signed);
   try {
-    await rpc(network.sidecarUrl, "eth_sendFrameTransaction", [toWire(signed)]);
+    await rpc(network.url, "eth_sendFrameTransaction", [toWire(signed)]);
   } catch (e) {
     if (await safeguardSwitchedOn(network, ctx)) throw new Error(SAFEGUARD_SWITCHED_ON);
     throw e;
@@ -468,7 +468,7 @@ async function submit(
   await onProgress({ type: "mining" });
   for (let i = 0; i < 60; i++) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
-    const receipt = await rpc<Receipt | null>(network.rpcUrl, "eth_getTransactionReceipt", [hash]);
+    const receipt = await rpc<Receipt | null>(network.url, "eth_getTransactionReceipt", [hash]);
     if (receipt) {
       const ok = receiptOk(receipt);
       await settleEntry(account.index, hash, receipt);
@@ -477,7 +477,7 @@ async function submit(
   }
   // The mempool drops a pending transaction that lacks a newly required signature. A last look for its receipt first,
   // since a dropped entry is never checked again.
-  const receipt = await rpc<Receipt | null>(network.rpcUrl, "eth_getTransactionReceipt", [hash]);
+  const receipt = await rpc<Receipt | null>(network.url, "eth_getTransactionReceipt", [hash]);
   if (receipt) {
     await settleEntry(account.index, hash, receipt);
     return { hash, block: BigInt(receipt.blockNumber), ok: receiptOk(receipt) };
@@ -504,9 +504,9 @@ const TIP = 2_000_000_000n; // 2 gwei
 async function transferContext(network: Network, account: Account): Promise<TransferContext> {
   const state = await accountState(network, account);
   const [chainId, nonce, block] = await Promise.all([
-    rpc<Hex>(network.rpcUrl, "eth_chainId"),
-    rpc<Hex>(network.rpcUrl, "eth_getTransactionCount", [state.address, "latest"]),
-    rpc<{ baseFeePerGas?: Hex }>(network.rpcUrl, "eth_getBlockByNumber", ["latest", false]),
+    rpc<Hex>(network.url, "eth_chainId"),
+    rpc<Hex>(network.url, "eth_getTransactionCount", [state.address, "latest"]),
+    rpc<{ baseFeePerGas?: Hex }>(network.url, "eth_getBlockByNumber", ["latest", false]),
   ]);
   return {
     account,

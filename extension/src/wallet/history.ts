@@ -62,7 +62,7 @@ export async function syncHistory(network: Network, index: number): Promise<Hist
   const unsettled = entries.filter((e) => e.status === "pending" || (e.status !== "dropped" && e.fee === undefined));
   if (unsettled.length === 0) return entries;
   for (const entry of unsettled) {
-    const receipt = await rpc<Receipt | null>(network.rpcUrl, "eth_getTransactionReceipt", [entry.hash]);
+    const receipt = await rpc<Receipt | null>(network.url, "eth_getTransactionReceipt", [entry.hash]);
     if (receipt) await settleEntry(index, entry.hash, receipt);
   }
   return loadHistory(index);

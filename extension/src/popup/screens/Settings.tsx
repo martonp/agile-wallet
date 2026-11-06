@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { explain } from "../../wallet/errors";
 import {
-  LABELS,
+  LABEL,
   type Network,
   checkNetwork,
   invalidField,
@@ -10,8 +10,6 @@ import {
   requestHostAccess,
   saveNetwork,
 } from "../../wallet/network";
-
-const FIELDS: (keyof Network)[] = ["rpcUrl", "sidecarUrl"];
 
 export function Settings({ onBack }: { onBack: () => void }) {
   const [network, setNetwork] = useState<Network>();
@@ -29,7 +27,7 @@ export function Settings({ onBack }: { onBack: () => void }) {
   if (!network) return null;
 
   // Leaving with edits that aren't saved asks first.
-  const dirty = FIELDS.some((field) => network[field] !== saved?.[field]);
+  const dirty = network.url !== saved?.url;
   const back = () => (dirty ? setConfirmLeave(true) : onBack());
 
   // Both actions ask for host access first, while the click still counts as a user gesture.
@@ -56,23 +54,24 @@ export function Settings({ onBack }: { onBack: () => void }) {
   const test = () =>
     withAccess(async () => {
       const { ok, lines } = await checkNetwork(network);
-      setResult(ok ? { info: "Connected.", lines } : { error: "Couldn't reach everything.", lines });
+      setResult(ok ? { info: "Connected.", lines } : { error: "Connection check failed.", lines });
     });
 
   return (
     <div className="screen">
       <Header title="Network" onBack={back} />
-      {FIELDS.map((field) => (
-        <div key={field}>
-          <p className="label">{LABELS[field]}</p>
-          <input
-            className="field mono"
-            value={network[field]}
-            spellCheck={false}
-            onChange={(e) => setNetwork({ ...network, [field]: e.target.value.trim() })}
-          />
-        </div>
-      ))}
+      <div>
+        <p className="label">{LABEL}</p>
+        <input
+          className="field mono"
+          value={network.url}
+          spellCheck={false}
+          onChange={(e) => setNetwork({ url: e.target.value.trim() })}
+        />
+        <p className="hint" style={{ marginTop: 4 }}>
+          Transactions go to this node, and it forwards the wallet's reads to its EIP-8141 node.
+        </p>
+      </div>
       {result.error && <p className="error">{result.error}</p>}
       {result.info && <p className="hint">{result.info}</p>}
       {result.lines && (

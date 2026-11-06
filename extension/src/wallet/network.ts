@@ -1,17 +1,16 @@
 import { explain } from "./errors";
-import { rpc } from "./rpc";
+import { RpcError, rpc } from "./rpc";
 import type { Scheme } from "./schemes";
 
-// Where the wallet reads the chain and sends transactions.
+// Where the wallet reads the chain and sends transactions: a Crypto-Agility Mempool node. It takes the transactions,
+// and forwards the wallet's reads to its EIP-8141 node (the sidecar's --redirectRpc).
 export interface Network {
-  rpcUrl: string; // an EIP-8141 node: reads and simulation
-  sidecarUrl: string; // a Crypto-Agility Mempool node: sending
+  url: string;
 }
 
 // The local devnet from the README.
 export const LOCAL_DEVNET: Network = {
-  rpcUrl: "http://127.0.0.1:8545",
-  sidecarUrl: "http://127.0.0.1:14338/rpc",
+  url: "http://127.0.0.1:14338/rpc",
 };
 
 // The wallet's contracts (contracts/deployments/1337.json). They are deployed through the deterministic CREATE2
@@ -46,9 +45,12 @@ export const VERIFIERS: Record<Scheme, string> = {
 
 const KEY = "network";
 
+// What storage may hold: settings from before kept a node URL as well, and the mempool URL as `sidecarUrl`.
+type StoredNetwork = { url?: string; sidecarUrl?: string };
+
 export async function loadNetwork(): Promise<Network> {
-  const stored = (await chrome.storage.local.get(KEY))[KEY] as Partial<Network> | undefined;
-  return { rpcUrl: stored?.rpcUrl ?? LOCAL_DEVNET.rpcUrl, sidecarUrl: stored?.sidecarUrl ?? LOCAL_DEVNET.sidecarUrl };
+  const stored = (await chrome.storage.local.get(KEY))[KEY] as StoredNetwork | undefined;
+  return { url: stored?.url ?? stored?.sidecarUrl ?? LOCAL_DEVNET.url };
 }
 
 export async function saveNetwork(network: Network): Promise<void> {
@@ -57,19 +59,15 @@ export async function saveNetwork(network: Network): Promise<void> {
   await chrome.storage.local.set({ [KEY]: network });
 }
 
-// The first field that isn't a valid URL, as a message; undefined when both are.
+// What's wrong with the URL, as a message; undefined when it's a valid http(s) URL.
 export function invalidField(network: Network): string | undefined {
-  for (const field of ["rpcUrl", "sidecarUrl"] as const) {
-    if (!/^https?:$/.test(urlOrUndefined(network[field])?.protocol ?? "")) return `${LABELS[field]} isn't an http(s) URL`;
-  }
+  if (!/^https?:$/.test(urlOrUndefined(network.url)?.protocol ?? "")) return `${LABEL} isn't an http(s) URL`;
 }
 
-export const LABELS: Record<keyof Network, string> = {
-  rpcUrl: "Node RPC",
-  sidecarUrl: "Crypto-Agility Mempool RPC",
-};
+export const LABEL = "Crypto-Agility Mempool RPC";
 
-// Asks each endpoint for its chain id and checks that the wallet's contracts are deployed; one line per finding.
+// Asks the node for its chain id, checks that it forwards node reads, and that the wallet's contracts are deployed;
+// one line per finding.
 export async function checkNetwork(network: Network): Promise<{ ok: boolean; lines: string[] }> {
   const lines: string[] = [];
   let ok = true;
@@ -81,31 +79,37 @@ export async function checkNetwork(network: Network): Promise<{ ok: boolean; lin
       lines.push(`${label}: ${explain(e)}`);
     }
   };
-  const chainId = (url: string) => rpc<string>(url, "eth_chainId").then((id) => `chain ${BigInt(id)}`);
-  await attempt(LABELS.rpcUrl, () => chainId(network.rpcUrl));
-  await attempt(LABELS.sidecarUrl, () => chainId(network.sidecarUrl));
+  await attempt(LABEL, () => rpc<string>(network.url, "eth_chainId").then((id) => `chain ${BigInt(id)}`));
+  let forwarded = false;
+  await attempt("Node reads", async () => {
+    const block = await rpc<string>(network.url, "eth_blockNumber").catch((e) => {
+      // The sidecar answers methods it doesn't forward with "Method … is not supported".
+      if (e instanceof RpcError && /not supported/.test(e.reason)) throw new Error("not forwarded: the mempool node needs --redirectRpc");
+      throw e;
+    });
+    forwarded = true;
+    return `forwarded, block ${BigInt(block)}`;
+  });
+  if (!forwarded) return { ok, lines };
   await attempt("Wallet contracts", async () => {
-    const code = await rpc<string>(network.rpcUrl, "eth_getCode", [CONTRACTS.factory, "latest"]);
+    const code = await rpc<string>(network.url, "eth_getCode", [CONTRACTS.factory, "latest"]);
     if (code === "0x") throw new Error("not deployed on this network");
     return "deployed";
   });
   return { ok, lines };
 }
 
-// Asks Chrome for access to the endpoints' hosts (the manifest grants localhost). Call it straight from a click
+// Asks Chrome for access to the node's host (the manifest grants localhost). Call it straight from a click
 // handler: Chrome only shows the prompt during a user gesture, and resolves true at once for hosts it already has.
 export async function requestHostAccess(network: Network): Promise<boolean> {
   if (!globalThis.chrome?.permissions) return true; // the Vite dev server
   return chrome.permissions.request({ origins: originPatterns(network) });
 }
 
-// Host permission patterns for the endpoints (any port), for chrome.permissions.
+// The host permission pattern for the node (any port), for chrome.permissions.
 export function originPatterns(network: Network): string[] {
-  const patterns = [network.rpcUrl, network.sidecarUrl].map((u) => {
-    const url = new URL(u);
-    return `${url.protocol}//${url.hostname}/*`;
-  });
-  return [...new Set(patterns)];
+  const url = new URL(network.url);
+  return [`${url.protocol}//${url.hostname}/*`];
 }
 
 function urlOrUndefined(value: string): URL | undefined {

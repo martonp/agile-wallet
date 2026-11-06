@@ -76,7 +76,8 @@ Each step starts from the repository root.
 (cd contracts && forge build && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
   --private-key $FUNDED_KEY --broadcast --slow --legacy --gas-estimate-multiplier 900)
 # 3. The Crypto-Agility sidecar, in its own terminal; it gossips on the mempool's topic
-#    (another node joins with --p2p.bootEnrs <the ENR this one logs>)
+#    (another node joins with --p2p.bootEnrs <the ENR this one logs>). --redirectRpc forwards the wallet's node
+#    reads to ethrex, so the extension needs only this node's URL.
 (cd sidecar && bun install && bun run build && ./skandha node \
   --configFile ../scripts/crypto-agility-sidecar.config.json --api.port 14338 --api.wsPort 14338 \
   --p2p.port 4338 --p2p.enrPort 4338 --redirectRpc --executor.bundlingMode auto)

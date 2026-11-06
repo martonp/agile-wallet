@@ -65,7 +65,7 @@ export async function deriveAccount(
 // deployment, or if no subset matches.
 export async function recoverSchemes(network: Network, owner: string, all: Account["schemes"]): Promise<Account["schemes"] | undefined> {
   const address = walletAddress(owner);
-  if ((await rpc<string>(network.rpcUrl, "eth_getCode", [address, "latest"])) === "0x") return undefined;
+  if ((await rpc<string>(network.url, "eth_getCode", [address, "latest"])) === "0x") return undefined;
   const onchain = await onchainSchemesHash(network, address);
   for (let mask = 1; mask < 1 << all.length; mask++) {
     const subset = all.filter((_, i) => mask & (1 << i));
@@ -175,11 +175,11 @@ export function rulesHash(rules: Rule[]): string {
 }
 
 async function onchainSchemesHash(network: Network, address: string): Promise<string> {
-  return rpc<string>(network.rpcUrl, "eth_call", [{ to: address, data: SCHEMES_HASH }, "latest"]);
+  return rpc<string>(network.url, "eth_call", [{ to: address, data: SCHEMES_HASH }, "latest"]);
 }
 
 async function onchainRulesHash(network: Network, address: string): Promise<string> {
-  return rpc<string>(network.rpcUrl, "eth_call", [{ to: address, data: RULES_HASH }, "latest"]);
+  return rpc<string>(network.url, "eth_call", [{ to: address, data: RULES_HASH }, "latest"]);
 }
 
 // When each known signal was raised (seconds since the epoch), or 0 while it isn't, by lowercase address. A signal
@@ -189,7 +189,7 @@ export type SignalStates = Record<string, number>;
 export async function signalStates(network: Network): Promise<SignalStates> {
   const entries = await Promise.all(
     SIGNALS.map(async (s) => {
-      const brokenAt = await rpc<string>(network.rpcUrl, "eth_call", [{ to: s.address, data: BROKEN_AT }, "latest"]);
+      const brokenAt = await rpc<string>(network.url, "eth_call", [{ to: s.address, data: BROKEN_AT }, "latest"]);
       return [s.address.toLowerCase(), brokenAt === "0x" ? 0 : Number(BigInt(brokenAt))] as const;
     }),
   );
@@ -271,8 +271,8 @@ export interface AccountState {
 export async function accountState(network: Network, account: Account): Promise<AccountState> {
   const address = walletAddress(account.owner);
   const [balance, code, signals] = await Promise.all([
-    rpc<string>(network.rpcUrl, "eth_getBalance", [address, "latest"]),
-    rpc<string>(network.rpcUrl, "eth_getCode", [address, "latest"]),
+    rpc<string>(network.url, "eth_getBalance", [address, "latest"]),
+    rpc<string>(network.url, "eth_getCode", [address, "latest"]),
     signalStates(network),
   ]);
   const deployed = code !== "0x";
