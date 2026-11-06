@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { deriveAccount, loadAccount } from "./account";
 import { createWallet } from "./keyring";
 import { entropyToSeed, generateEntropy } from "./mnemonic";
+import { CONTRACTS } from "./network";
 import { changeSchemesBeforeDeployment } from "./transaction";
 import { WrongPasswordError } from "./vault";
 
@@ -32,19 +33,35 @@ test("before deployment, schemes change without a transaction; adding one derive
   const expected = await deriveAccount(entropyToSeed(entropy), ["ecdsa", "sphincs"]); // computed before the vault zeroes it
   const account = await createWallet("pw", entropy, ["ecdsa"], null);
 
-  const added = await changeSchemesBeforeDeployment("pw", account, ["ecdsa", "sphincs"]);
+  const added = await changeSchemesBeforeDeployment("pw", account, { schemes: ["ecdsa", "sphincs"], rules: [] });
   expect(added.schemes).toEqual(expected.schemes);
   expect((await loadAccount(0))!.schemes).toEqual(expected.schemes);
 
   // Removing needs no keys, so no password.
-  const removed = await changeSchemesBeforeDeployment("", added, ["sphincs"]);
+  const removed = await changeSchemesBeforeDeployment("", added, { schemes: ["sphincs"], rules: [] });
   expect(removed.schemes.map((s) => s.scheme)).toEqual(["sphincs"]);
-  await expect(changeSchemesBeforeDeployment("wrong", removed, ["ecdsa", "sphincs"])).rejects.toThrow(WrongPasswordError);
+  await expect(changeSchemesBeforeDeployment("wrong", removed, { schemes: ["ecdsa", "sphincs"], rules: [] })).rejects.toThrow(WrongPasswordError);
 });
 
 test("once the wallet is deployed, a change needs a transaction", async () => {
   const account = await createWallet("pw", generateEntropy(), ["ecdsa"], null);
   code = "0x60";
-  await expect(changeSchemesBeforeDeployment("pw", account, ["ecdsa", "sphincs"])).rejects.toThrow("takes a transaction");
+  await expect(changeSchemesBeforeDeployment("pw", account, { schemes: ["ecdsa", "sphincs"], rules: [] })).rejects.toThrow("takes a transaction");
   expect((await loadAccount(0))!.schemes.map((s) => s.scheme)).toEqual(["ecdsa"]);
+});
+
+test("before deployment, safeguards are saved too; a backup's key is derived once and then reused", { timeout: 30_000 }, async () => {
+  const entropy = generateEntropy();
+  const sphincs = (await deriveAccount(entropyToSeed(entropy), ["sphincs"])).schemes[0];
+  const account = await createWallet("pw", entropy, ["ecdsa"], null);
+  const signal = CONTRACTS.ecdsaBreakSignal;
+
+  const guarded = await changeSchemesBeforeDeployment("pw", account, { schemes: ["ecdsa"], rules: [{ signal, scheme: "sphincs" }] });
+  expect(guarded.rules).toEqual([{ signal, ...sphincs }]);
+  expect((await loadAccount(0))!.rules).toEqual([{ signal, ...sphincs }]);
+
+  // The backup's key is known now: making it a scheme too, or dropping the safeguard, needs no password.
+  const both = await changeSchemesBeforeDeployment("", guarded, { schemes: ["ecdsa", "sphincs"], rules: [{ signal, scheme: "sphincs" }] });
+  expect(both.schemes).toEqual([account.schemes[0], sphincs]);
+  expect((await changeSchemesBeforeDeployment("", both, { schemes: ["ecdsa"], rules: [] })).rules).toEqual([]);
 });

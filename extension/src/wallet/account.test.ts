@@ -231,3 +231,12 @@ test("renames an account, keeping everything else", async () => {
   await renameAccount(1, "");
   expect((await loadAccount(1))!.name).toBe("Account 2");
 });
+
+test("safeguards the deployed wallet doesn't have are dropped, so its transactions validate", async () => {
+  await saveAccount({ ...record(0, [ecdsa]), rules: [rule] });
+  stubNode(schemesHash([ecdsa]), rulesHash([rule])); // it has them: kept
+  expect((await syncAccount(LOCAL_DEVNET, 0))!.rules).toEqual([rule]);
+  stubNode(schemesHash([ecdsa])); // deployed without them
+  expect((await syncAccount(LOCAL_DEVNET, 0))!.rules).toEqual([]);
+  expect((await loadAccount(0))!.rules).toEqual([]);
+});

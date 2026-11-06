@@ -7,10 +7,10 @@ import type { Scheme } from "./schemes";
 export interface HistoryEntry {
   hash: string;
   time: number; // ms since the epoch, when sent
-  kind: "transfer" | "setSchemes";
+  kind: "transfer" | "setSchemes" | "deploy"; // deploy: a first transaction that only deploys the wallet
   to?: string; // a transfer's recipient
   value?: string; // a transfer's amount, in wei (bigint as a string: storage is JSON)
-  schemes?: Scheme[]; // a scheme change's new list
+  schemes?: Scheme[]; // a scheme change's new list, or the deployed wallet's
   rules?: Scheme[]; // and the backup scheme of each of its rules
   deploys: boolean; // the wallet's first transaction, which also deploys it
   signers: Scheme[]; // the scheme of each signature the transaction carried, in order

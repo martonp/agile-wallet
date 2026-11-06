@@ -222,7 +222,8 @@ export async function syncAccount(network: Network, index: number): Promise<Acco
   const account = await loadAccount(index);
   const key = keyOf("pendingSchemes", index);
   const stored = (await chrome.storage.local.get(key))[key] as PendingChange | Account["schemes"] | null | undefined;
-  if (!account || !stored) return account;
+  if (!account) return account;
+  if (!stored) return dropUnsetRules(network, account);
   const pending = Array.isArray(stored) ? { schemes: stored, rules: account.rules ?? [] } : stored;
   const address = walletAddress(account.owner);
   const [schemes, rules] = await Promise.all([onchainSchemesHash(network, address), onchainRulesHash(network, address)]);
@@ -230,6 +231,19 @@ export async function syncAccount(network: Network, index: number): Promise<Acco
   const updated = { ...account, ...pending };
   await saveAccount(updated);
   await clearPendingSchemes(index);
+  return updated;
+}
+
+// Safeguards saved before deployment that the deployed wallet doesn't have (its first transaction's setRules frame
+// failed, or another device deployed it without them) are dropped: transactions validate against the wallet's rules,
+// and the Account screen shows the safeguards as off, to set again.
+async function dropUnsetRules(network: Network, account: Account): Promise<Account> {
+  if ((account.rules ?? []).length === 0) return account;
+  const address = walletAddress(account.owner);
+  const [schemes, rules] = await Promise.all([onchainSchemesHash(network, address), onchainRulesHash(network, address)]);
+  if (rules !== NO_RULES || schemes !== schemesHash(account.schemes)) return account; // undeployed reads as "0x"
+  const updated = { ...account, rules: [] };
+  await saveAccount(updated);
   return updated;
 }
 

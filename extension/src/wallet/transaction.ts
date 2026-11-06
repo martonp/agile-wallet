@@ -61,9 +61,9 @@ export interface Transfer {
   value: bigint; // wei
 }
 
-// What a transaction's SENDER frames do: send ETH, or replace the wallet's schemes and rules (a setSchemes frame if
-// the schemes change, then a setRules frame if the rules do).
-export type Action = ({ type: "transfer" } & Transfer) | ({ type: "configure" } & PendingChange);
+// What a transaction's SENDER frames do: send ETH, replace the wallet's schemes and rules (a setSchemes frame if
+// the schemes change, then a setRules frame if the rules do), or nothing: a first transaction that only deploys.
+export type Action = ({ type: "transfer" } & Transfer) | ({ type: "configure" } & PendingChange) | { type: "deploy" };
 
 export interface TransferContext {
   account: Account;
@@ -86,15 +86,32 @@ const changesSchemes = (account: Account, action: Action) =>
 const changesRules = (account: Account, action: Action) =>
   action.type === "configure" && rulesHash(action.rules) !== rulesHash(account.rules ?? []);
 
+// The rules the wallet has when the transaction is validated. A wallet starts with none: safeguards chosen before
+// deployment are set by its first transaction.
+const rulesOnChain = (account: Account, deployed: boolean): Rule[] => (deployed ? (account.rules ?? []) : []);
+
+// The rules the transaction's setRules frame stores, if it has one: a configure action's new rules, or, in the first
+// transaction, the safeguards chosen before deployment. (Before deployment, changes are saved locally rather than sent
+// as a configure action, so the two never meet.)
+function rulesToSet(account: Account, deployed: boolean, action: Action): Rule[] | undefined {
+  if (action.type === "configure") return changesRules(account, action) ? action.rules : undefined;
+  return !deployed && (account.rules ?? []).length > 0 ? account.rules : undefined;
+}
+
+const backups = (rules: Rule[]) => rules.map(({ scheme, publicKey }) => ({ scheme, publicKey }));
+
+// What every transaction of the account needs, whatever it does: its schemes, then the backups of its raised rules.
+function baseSchemes(account: Account, signals: SignalStates, deployed: boolean): Account["schemes"] {
+  return union(account.schemes, backups(raisedRules({ ...account, rules: rulesOnChain(account, deployed) }, signals)));
+}
+
 // The schemes whose signatures a transaction needs, in order (AgileWallet.validate): the wallet's, the backups of its
 // raised rules, then what the setSchemes frame adds, then the backups of the setRules frame's rules.
-export function requiredSchemes(account: Account, action: Action, signals: SignalStates = {}): Account["schemes"] {
-  const backups = (rules: Rule[]) => rules.map(({ scheme, publicKey }) => ({ scheme, publicKey }));
-  let required = union(account.schemes, backups(raisedRules(account, signals)));
-  if (action.type === "configure") {
-    if (changesSchemes(account, action)) required = union(required, action.schemes);
-    if (changesRules(account, action)) required = union(required, backups(action.rules));
-  }
+export function requiredSchemes(account: Account, action: Action, signals: SignalStates, deployed: boolean): Account["schemes"] {
+  let required = baseSchemes(account, signals, deployed);
+  if (changesSchemes(account, action)) required = union(required, (action as PendingChange).schemes);
+  const toSet = rulesToSet(account, deployed, action);
+  if (toSet) required = union(required, backups(toSet));
   return required;
 }
 
@@ -117,24 +134,28 @@ export function buildTransaction(ctx: TransferContext, action: Action, limits: L
     const data = encodeFunctionData({ abi: FACTORY_ABI, functionName: "deploy", args: [owner, schemes] });
     frames.push(tx.frame(PROFILE, "DEFAULT", { target: CONTRACTS.factory as Address, execution: limits.deploy, state: 300_000n, data }));
   }
-  const validate = encodeFunctionData({ abi: WALLET_ABI, functionName: "validate", args: [schemes, abiRules(ctx.account.rules ?? [])] });
+  const validate = encodeFunctionData({
+    abi: WALLET_ABI,
+    functionName: "validate",
+    args: [schemes, abiRules(rulesOnChain(ctx.account, ctx.deployed))],
+  });
   frames.push(tx.frame(PROFILE, "VERIFY", { scope: "EXECUTION_AND_PAYMENT", execution: limits.verify, data: validate }));
+  if (action.type === "configure" && changesSchemes(ctx.account, action)) {
+    const data = encodeFunctionData({ abi: WALLET_ABI, functionName: "setSchemes", args: [abiSchemes(action.schemes)] });
+    frames.push(tx.frame(PROFILE, "SENDER", { target: ctx.wallet, execution: SET_SCHEMES_GAS, state: 50_000n, data }));
+  }
+  const toSet = rulesToSet(ctx.account, ctx.deployed, action);
+  if (toSet) {
+    // State gas covers storing the rules hash in a slot that was empty (more than clearing or replacing it needs).
+    const data = encodeFunctionData({ abi: WALLET_ABI, functionName: "setRules", args: [abiRules(toSet)] });
+    frames.push(tx.frame(PROFILE, "SENDER", { target: ctx.wallet, execution: SET_RULES_GAS, state: 200_000n, data }));
+  }
   if (action.type === "transfer") {
     // State gas covers creating the recipient's account if it is new.
     frames.push(tx.frame(PROFILE, "SENDER", { target: action.to, execution: 50_000n, state: 200_000n, value: action.value }));
-  } else {
-    if (changesSchemes(ctx.account, action)) {
-      const data = encodeFunctionData({ abi: WALLET_ABI, functionName: "setSchemes", args: [abiSchemes(action.schemes)] });
-      frames.push(tx.frame(PROFILE, "SENDER", { target: ctx.wallet, execution: SET_SCHEMES_GAS, state: 50_000n, data }));
-    }
-    if (changesRules(ctx.account, action)) {
-      // State gas covers storing the rules hash in a slot that was empty (more than clearing or replacing it needs).
-      const data = encodeFunctionData({ abi: WALLET_ABI, functionName: "setRules", args: [abiRules(action.rules)] });
-      frames.push(tx.frame(PROFILE, "SENDER", { target: ctx.wallet, execution: SET_RULES_GAS, state: 200_000n, data }));
-    }
   }
 
-  const required = requiredSchemes(ctx.account, action, ctx.signals);
+  const required = requiredSchemes(ctx.account, action, ctx.signals, ctx.deployed);
   const signatures: SignatureEntry[] = required.map((s) =>
     s.scheme === "ecdsa"
       ? tx.secp256k1Placeholder(PROFILE, owner)
@@ -166,14 +187,14 @@ const SET_RULES_GAS = 150_000n; // calls each signal, stores the rules' hash and
 
 // The deploy frame checks the wallet's current schemes; VERIFY checks every required scheme's signature, and every
 // rule's signal.
-export function fixedLimits(account: Account, deployed: boolean, action: Action, signals: SignalStates = {}): Limits {
+export function fixedLimits(account: Account, deployed: boolean, action: Action, signals: SignalStates): Limits {
   const sum = (table: Record<Scheme | "base", bigint>, schemes: Account["schemes"]) =>
     schemes.reduce((g, s) => g + table[s.scheme], table.base);
   const verify =
-    sum(VERIFY_GAS, requiredSchemes(account, action, signals)) +
-    VERIFY_GAS_PER_RULE * BigInt((account.rules ?? []).length) +
+    sum(VERIFY_GAS, requiredSchemes(account, action, signals, deployed)) +
+    VERIFY_GAS_PER_RULE * BigInt(rulesOnChain(account, deployed).length) +
     (changesSchemes(account, action) ? VERIFY_GAS_SET_SCHEMES : 0n) +
-    (changesRules(account, action) ? VERIFY_GAS_SET_RULES : 0n);
+    (rulesToSet(account, deployed, action) ? VERIFY_GAS_SET_RULES : 0n);
   return { deploy: deployed ? 0n : sum(DEPLOY_GAS, account.schemes), verify };
 }
 
@@ -185,7 +206,7 @@ const SIGNATURE_BYTES: Record<Scheme, number> = { ecdsa: 65, falcon: 1064, sphin
 export function maxFee(ctx: TransferContext, action: Action): bigint {
   const unsigned = buildTransaction(ctx, action, fixedLimits(ctx.account, ctx.deployed, action, ctx.signals));
   const frames = unsigned.frames.reduce((gas, f) => gas + f.limits.execution + f.limits.state, 0n);
-  const signatureBytes = signers(unsigned, requiredSchemes(ctx.account, action, ctx.signals)).reduce((n, s) => n + SIGNATURE_BYTES[s.scheme], 0);
+  const signatureBytes = signers(unsigned, requiredSchemes(ctx.account, action, ctx.signals, ctx.deployed)).reduce((n, s) => n + SIGNATURE_BYTES[s.scheme], 0);
   const bytes = (tx.encodeTx(PROFILE, unsigned).length - 2) / 2 + signatureBytes;
   return (frames + 21_000n + 16n * BigInt(bytes)) * ctx.maxFeePerGas;
 }
@@ -254,6 +275,20 @@ export function sendTransfer(password: string, account: Account, transfer: Trans
   return submit(password, account, [], async () => ({ type: "transfer", ...transfer }), onProgress);
 }
 
+// Deploys the wallet with its saved schemes and safeguards, and does nothing else: for a wallet that holds ETH but
+// has nothing to send yet.
+export async function deployWallet(password: string, account: Account, onProgress: OnProgress = () => {}): Promise<Sent> {
+  // Checked before the keys are derived, which takes seconds.
+  if ((await accountState(await loadNetwork(), account)).deployed) throw new Error("This wallet is already deployed.");
+  return submit(password, account, [], async () => ({ type: "deploy" }), onProgress);
+}
+
+// The deploy action's fee, and what the wallet holds, for the setup screen.
+export async function deployFee(account: Account): Promise<{ maxFee: bigint; balance: bigint; deployed: boolean }> {
+  const ctx = await transferContext(await loadNetwork(), account);
+  return { maxFee: maxFee(ctx, { type: "deploy" }), balance: ctx.balance, deployed: ctx.deployed };
+}
+
 // A safeguard to set: once `signal` is raised, `scheme` must also sign.
 export interface RuleChoice {
   signal: string;
@@ -271,10 +306,7 @@ export async function changeSchemes(
 ): Promise<Sent> {
   const chosen = SCHEMES.filter((s) => next.schemes.includes(s));
   if (chosen.length === 0) throw new Error("Keep at least one scheme");
-  // Only signals the extension reads: a raised signal it doesn't read would leave a backup unsigned.
-  if (next.rules.some((r) => !SIGNALS.some((s) => s.address.toLowerCase() === r.signal.toLowerCase()))) {
-    throw new Error("Unknown break signal");
-  }
+  checkSignals(next.rules);
   // Each name has one key per seed, so names tell whether anything changes.
   const sameRules = (a: { signal: string; scheme: Scheme }[], b: { signal: string; scheme: Scheme }[]) =>
     a.length === b.length && a.every((r, i) => r.signal.toLowerCase() === b[i].signal.toLowerCase() && r.scheme === b[i].scheme);
@@ -309,17 +341,31 @@ export async function changeSchemes(
   return sent;
 }
 
-// Before deployment the scheme list exists only here: the address depends on the owner alone, and the factory takes
-// whatever list the first transaction carries. So a change is just saved, with no transaction, fee or signatures.
-// The password is needed only to derive the public keys of schemes being added. Refuses if the wallet has been
-// deployed meanwhile (from another device, say), since then the change takes a transaction.
-export async function changeSchemesBeforeDeployment(password: string, account: Account, next: Scheme[]): Promise<Account> {
-  const chosen = SCHEMES.filter((s) => next.includes(s));
+// Only signals the extension reads: a raised signal it doesn't read would leave a backup unsigned.
+function checkSignals(rules: RuleChoice[]) {
+  if (rules.some((r) => !SIGNALS.some((s) => s.address.toLowerCase() === r.signal.toLowerCase()))) {
+    throw new Error("Unknown break signal");
+  }
+}
+
+// Before deployment the scheme list and safeguards exist only here: the address depends on the owner alone, and the
+// first transaction deploys the wallet with the saved schemes and sets the saved safeguards. So a change is just
+// saved, with no transaction, fee or signatures. The password is needed only to derive the public keys of schemes
+// being added. Refuses if the wallet has been deployed meanwhile (from another device, say), since then the change
+// takes a transaction.
+export async function changeSchemesBeforeDeployment(
+  password: string,
+  account: Account,
+  next: { schemes: Scheme[]; rules: RuleChoice[] },
+): Promise<Account> {
+  const chosen = SCHEMES.filter((s) => next.schemes.includes(s));
   if (chosen.length === 0) throw new Error("Keep at least one scheme");
+  checkSignals(next.rules);
   if ((await accountState(await loadNetwork(), account)).deployed) {
     throw new Error("The wallet has been deployed since this screen opened, so changing its schemes now takes a transaction.");
   }
-  const added = chosen.filter((s) => !account.schemes.some((c) => c.scheme === s));
+  const known = [...account.schemes, ...(account.rules ?? [])];
+  const added = [...new Set([...chosen, ...next.rules.map((r) => r.scheme)])].filter((s) => !known.some((k) => k.scheme === s));
   const publicKeys: Partial<Record<Scheme, string>> = {};
   if (added.length > 0) {
     await withSigningKeys(
@@ -334,11 +380,10 @@ export async function changeSchemesBeforeDeployment(password: string, account: A
       account.index,
     );
   }
-  const schemes = chosen.map((scheme) => ({
-    scheme,
-    publicKey: account.schemes.find((c) => c.scheme === scheme)?.publicKey ?? publicKeys[scheme]!,
-  }));
-  const updated = { ...account, schemes };
+  const publicKey = (scheme: Scheme) => known.find((k) => k.scheme === scheme)?.publicKey ?? publicKeys[scheme]!;
+  const schemes = chosen.map((scheme) => ({ scheme, publicKey: publicKey(scheme) }));
+  const rules = next.rules.map((r) => ({ signal: r.signal, scheme: r.scheme, publicKey: publicKey(r.scheme) }));
+  const updated = { ...account, schemes, rules };
   await saveAccount(updated);
   return updated;
 }
@@ -354,12 +399,13 @@ async function submit(
 ): Promise<Sent> {
   const network = await loadNetwork();
   const ctx = await transferContext(network, account);
-  // ECDSA always: it is also the check that these keys are this account's. Raised rules' backups sign too.
+  // ECDSA always: it is also the check that these keys are this account's. Then what any transaction of the account
+  // needs now, and, before deployment, the backups of the safeguards the first transaction sets.
   const needed = [
     ...new Set<Scheme>([
       "ecdsa",
-      ...account.schemes.map((s) => s.scheme),
-      ...raisedRules(account, ctx.signals).map((r) => r.scheme),
+      ...baseSchemes(account, ctx.signals, ctx.deployed).map((s) => s.scheme),
+      ...(ctx.deployed ? [] : (account.rules ?? []).map((r) => r.scheme)),
       ...extraKeys,
     ]),
   ];
@@ -385,7 +431,7 @@ async function submit(
       if (needs > ctx.balance) {
         throw new Error(`Not enough ETH: this needs up to ${formatEth(needs, 6)} ETH with the network fee, and the wallet holds ${formatEth(ctx.balance, 6)}.`);
       }
-      const required = requiredSchemes(account, action, ctx.signals);
+      const required = requiredSchemes(account, action, ctx.signals, ctx.deployed);
       const unsigned = buildTransaction(ctx, action, fixedLimits(account, ctx.deployed, action, ctx.signals));
       await record({ type: "signers", signers: signers(unsigned, required) });
       return signTransaction(unsigned, required, keys, record);
@@ -407,7 +453,9 @@ async function submit(
     time: Date.now(),
     ...(done.type === "transfer"
       ? { kind: "transfer" as const, to: done.to, value: done.value.toString() }
-      : { kind: "setSchemes" as const, schemes: done.schemes.map((s) => s.scheme), rules: done.rules.map((r) => r.scheme) }),
+      : done.type === "deploy"
+        ? { kind: "deploy" as const, schemes: account.schemes.map((s) => s.scheme), rules: (account.rules ?? []).map((r) => r.scheme) }
+        : { kind: "setSchemes" as const, schemes: done.schemes.map((s) => s.scheme), rules: done.rules.map((r) => r.scheme) }),
     deploys: !ctx.deployed,
     signers: signedBy,
     status: "pending",
@@ -441,7 +489,8 @@ async function submit(
 // signature that is now required.
 async function safeguardSwitchedOn(network: Network, ctx: TransferContext): Promise<boolean> {
   const now = await signalStates(network).catch(() => ctx.signals);
-  return raisedRules(ctx.account, now).length > raisedRules(ctx.account, ctx.signals).length;
+  const onChain = { ...ctx.account, rules: rulesOnChain(ctx.account, ctx.deployed) };
+  return raisedRules(onChain, now).length > raisedRules(onChain, ctx.signals).length;
 }
 
 // A fixed tip, as the devnet scripts pay. Following the node's suggested price instead feeds back on a quiet chain:

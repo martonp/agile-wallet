@@ -4,7 +4,7 @@ import { createWallet } from "./keyring";
 import { entropyToSeed, generateEntropy } from "./mnemonic";
 import { CONTRACTS, LOCAL_DEVNET } from "./network";
 import { SAFEGUARD_SWITCHED_ON } from "./errors";
-import { changeSchemes, sendTransfer } from "./transaction";
+import { changeSchemes, deployWallet, sendTransfer } from "./transaction";
 
 // In-memory stand-in for chrome.storage.local, and a node where the wallet is deployed, the signal isn't raised,
 // and sending stops with "stop here": these tests are about what gets signed, not what the mempool does.
@@ -87,4 +87,10 @@ test("a send refused because the signal was just raised says a safeguard switche
   await expect(sendTransfer("pw", account, { to: "0x8943545177806ED17B9F23F0a21ee5948eCaa776", value: 1n })).rejects.toThrow(
     SAFEGUARD_SWITCHED_ON,
   );
+});
+
+test("deploying a wallet that is already deployed is refused before any key is derived", async () => {
+  const account = await subscribedWallet(); // the stub node says it has code
+  await expect(deployWallet("wrong password", account)).rejects.toThrow("already deployed");
+  expect(sent).toHaveLength(0);
 });

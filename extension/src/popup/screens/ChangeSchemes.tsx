@@ -115,7 +115,7 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
 
   async function saveBeforeDeployment(account: Account) {
     try {
-      const updated = await changeSchemesBeforeDeployment(password, account, next);
+      const updated = await changeSchemesBeforeDeployment(password, account, { schemes: next, rules });
       show(updated);
       setDone("Saved. Your first transaction deploys the wallet with these schemes.");
     } catch (e) {

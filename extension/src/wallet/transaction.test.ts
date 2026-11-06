@@ -58,17 +58,17 @@ test("without an ECDSA scheme, the first transaction adds the owner's entry; lat
 test("fixed limits are well above what the devnet measured, and an ECDSA-only wallet fits without credit", async () => {
   // Measured on the local devnet: the lowest limits that simulate on a first transaction, and the gas used once deployed.
   const es = (await context(["ecdsa", "sphincs"], false)).account;
-  expect(fixedLimits(es, false, transfer).deploy).toBeGreaterThan(51_630n + 5_000n);
-  expect(fixedLimits(es, false, transfer).verify).toBeGreaterThan(133_482n + 20_000n);
-  expect(fixedLimits(es, true, transfer)).toEqual({ deploy: 0n, verify: fixedLimits(es, false, transfer).verify });
-  expect(fixedLimits(es, true, transfer).verify).toBeGreaterThan(141_197n + 20_000n);
+  expect(fixedLimits(es, false, transfer, {}).deploy).toBeGreaterThan(51_630n + 5_000n);
+  expect(fixedLimits(es, false, transfer, {}).verify).toBeGreaterThan(133_482n + 20_000n);
+  expect(fixedLimits(es, true, transfer, {})).toEqual({ deploy: 0n, verify: fixedLimits(es, false, transfer, {}).verify });
+  expect(fixedLimits(es, true, transfer, {}).verify).toBeGreaterThan(141_197n + 20_000n);
 
   const all = (await context(["ecdsa", "falcon", "sphincs"], false)).account;
-  expect(fixedLimits(all, false, transfer).deploy).toBeGreaterThan(65_980n + 10_000n);
-  expect(fixedLimits(all, true, transfer).verify).toBeGreaterThan(814_427n + 50_000n); // an expensive Falcon signature, deployed
+  expect(fixedLimits(all, false, transfer, {}).deploy).toBeGreaterThan(65_980n + 10_000n);
+  expect(fixedLimits(all, true, transfer, {}).verify).toBeGreaterThan(814_427n + 50_000n); // an expensive Falcon signature, deployed
 
   // No verifier call, so no virtual precompile credit: the limits plus the SECP256K1 signature cost (2,900) must stay under 100,000.
-  const ecdsa = fixedLimits((await context(["ecdsa"], false)).account, false, transfer);
+  const ecdsa = fixedLimits((await context(["ecdsa"], false)).account, false, transfer, {});
   expect(ecdsa.deploy + ecdsa.verify + 2_900n).toBeLessThan(100_000n);
 });
 
@@ -93,8 +93,8 @@ test("a scheme change calls setSchemes on the wallet and needs the added schemes
   const change: Action = { type: "configure", schemes: next, rules: [] };
 
   // The current schemes, then the added one; the removed one still signs.
-  expect(requiredSchemes(ctx.account, change).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs", "falcon"]);
-  const unsigned = buildTransaction(ctx, change, fixedLimits(ctx.account, true, change));
+  expect(requiredSchemes(ctx.account, change, {}, true).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs", "falcon"]);
+  const unsigned = buildTransaction(ctx, change, fixedLimits(ctx.account, true, change, {}));
   expect(unsigned.frames.map((f) => f.mode)).toEqual(["VERIFY", "SENDER"].map((m) => tx.frameMode(PROFILE, m)));
   expect(unsigned.frames[1].target).toBe(ctx.wallet);
   expect(unsigned.frames[0].data.slice(0, 10)).toBe(VALIDATE);
@@ -104,7 +104,7 @@ test("a scheme change calls setSchemes on the wallet and needs the added schemes
     ["SECP256K1", "ARBITRARY", "ARBITRARY"].map((n) => tx.sigScheme(PROFILE, n)),
   );
   // VERIFY pays for every required signature, Falcon's included.
-  expect(fixedLimits(ctx.account, true, change).verify).toBeGreaterThan(fixedLimits(ctx.account, true, transfer).verify + 800_000n);
+  expect(fixedLimits(ctx.account, true, change, {}).verify).toBeGreaterThan(fixedLimits(ctx.account, true, transfer, {}).verify + 800_000n);
 });
 
 test("the max fee covers what the mempool charged for a first ECDSA + SPHINCS- transfer", async () => {
@@ -124,14 +124,14 @@ test("the fee of the largest transfer covers any smaller one, so balance - fee i
 
 test("a rule needs nothing until its signal is raised; then its backup signs after the schemes", async () => {
   const ctx = await subscribed();
-  expect(requiredSchemes(ctx.account, transfer).map((s) => s.scheme)).toEqual(["ecdsa"]);
-  expect(requiredSchemes(ctx.account, transfer, raised).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs"]);
+  expect(requiredSchemes(ctx.account, transfer, {}, true).map((s) => s.scheme)).toEqual(["ecdsa"]);
+  expect(requiredSchemes(ctx.account, transfer, raised, true).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs"]);
 
   const unsigned = buildTransaction({ ...ctx, signals: raised }, transfer, limits);
   expect(unsigned.signatures.map((s) => s.scheme)).toEqual(["SECP256K1", "ARBITRARY"].map((n) => tx.sigScheme(PROFILE, n)));
   // VERIFY pays for the signal check, and for SPHINCS- once it is raised.
-  const before = fixedLimits(ctx.account, true, transfer).verify;
-  expect(before).toBeGreaterThan(fixedLimits((await context(["ecdsa"], true)).account, true, transfer).verify);
+  const before = fixedLimits(ctx.account, true, transfer, {}).verify;
+  expect(before).toBeGreaterThan(fixedLimits((await context(["ecdsa"], true)).account, true, transfer, {}).verify);
   expect(fixedLimits(ctx.account, true, transfer, raised).verify).toBeGreaterThan(before + 100_000n);
 });
 
@@ -139,8 +139,8 @@ test("subscribing sends only a setRules frame, and needs the backup's signature"
   const plain = await context(["ecdsa"], true);
   const rules = (await subscribed()).account.rules!;
   const subscribe: Action = { type: "configure", schemes: plain.account.schemes, rules };
-  expect(requiredSchemes(plain.account, subscribe).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs"]);
-  const unsigned = buildTransaction(plain, subscribe, fixedLimits(plain.account, true, subscribe));
+  expect(requiredSchemes(plain.account, subscribe, {}, true).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs"]);
+  const unsigned = buildTransaction(plain, subscribe, fixedLimits(plain.account, true, subscribe, {}));
   expect(unsigned.frames.map((f) => f.data.slice(0, 10))).toEqual([VALIDATE, SET_RULES]);
   expect(unsigned.frames[1].limits.state).toBeGreaterThanOrEqual(200_000n); // stores a slot that was empty
 });
@@ -150,7 +150,7 @@ test("changing schemes and rules together: setSchemes, then setRules, in the wal
   const falcon = (await deriveAccount(seed, ["falcon"])).schemes[0];
   // Raised: SPHINCS- signs; add Falcon as a scheme and drop the rule, so SPHINCS- still signs and Falcon too.
   const change: Action = { type: "configure", schemes: [...ctx.account.schemes, falcon], rules: [] };
-  expect(requiredSchemes(ctx.account, change, raised).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs", "falcon"]);
+  expect(requiredSchemes(ctx.account, change, raised, true).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs", "falcon"]);
   const unsigned = buildTransaction({ ...ctx, signals: raised }, change, limits);
   expect(unsigned.frames.map((f) => f.data.slice(0, 10))).toEqual([VALIDATE, SET_SCHEMES, SET_RULES]);
 });
@@ -158,13 +158,64 @@ test("changing schemes and rules together: setSchemes, then setRules, in the wal
 test("a raised backup that is already a scheme adds no signature", async () => {
   const ctx = await context(["ecdsa", "sphincs"], true);
   const account = { ...ctx.account, rules: [{ signal, ...ctx.account.schemes[1] }] };
-  expect(requiredSchemes(account, transfer, raised).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs"]);
+  expect(requiredSchemes(account, transfer, raised, true).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs"]);
 });
 
 test("an ECDSA wallet with a rule that isn't raised fits the validation budget without credit", async () => {
   // No verifier call, so no virtual precompile credit: VERIFY plus the SECP256K1 signature cost (2,900) must stay under 100,000.
   const ctx = await subscribed();
-  expect(fixedLimits(ctx.account, true, transfer).verify + 2_900n).toBeLessThan(100_000n);
+  expect(fixedLimits(ctx.account, true, transfer, {}).verify + 2_900n).toBeLessThan(100_000n);
   const unsubscribe: Action = { type: "configure", schemes: ctx.account.schemes, rules: [] };
-  expect(fixedLimits(ctx.account, true, unsubscribe).verify + 2_900n).toBeLessThan(100_000n);
+  expect(fixedLimits(ctx.account, true, unsubscribe, {}).verify + 2_900n).toBeLessThan(100_000n);
+});
+
+const deploy: Action = { type: "deploy" };
+
+test("a deploy-only transaction has just the deploy and VERIFY frames", async () => {
+  const ctx = await context(["ecdsa"], false);
+  const unsigned = buildTransaction(ctx, deploy, fixedLimits(ctx.account, false, deploy, {}));
+  expect(unsigned.frames.map((f) => f.mode)).toEqual(["DEFAULT", "VERIFY"].map((m) => tx.frameMode(PROFILE, m)));
+  expect(unsigned.signatures.map((s) => s.scheme)).toEqual([tx.sigScheme(PROFILE, "SECP256K1")]);
+  // Within the validation budget with no verifier credit, like a first ECDSA transfer.
+  const own = fixedLimits(ctx.account, false, deploy, {});
+  expect(own.deploy + own.verify + 2_900n).toBeLessThan(100_000n);
+});
+
+test("the first transaction sets the safeguards chosen before deployment, and needs their backups' signatures", async () => {
+  const ctx = await subscribed(false); // ECDSA, with a SPHINCS- safeguard saved before deployment
+  const plain = { ...ctx, account: { ...ctx.account, rules: [] } };
+
+  // Deploy only: deploy, VERIFY (against no rules: the new wallet has none), then setRules.
+  const deployed = buildTransaction(ctx, deploy, limits);
+  expect(deployed.frames.map((f) => f.mode)).toEqual(["DEFAULT", "VERIFY", "SENDER"].map((m) => tx.frameMode(PROFILE, m)));
+  expect(deployed.frames[1].data).toBe(buildTransaction(plain, deploy, limits).frames[1].data);
+  expect(deployed.frames[2].data.slice(0, 10)).toBe(SET_RULES);
+  expect(requiredSchemes(ctx.account, deploy, {}, false).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs"]);
+
+  // A first transfer: setRules, then the transfer.
+  const sent = buildTransaction(ctx, transfer, limits);
+  expect(sent.frames.map((f) => f.data.slice(0, 10))).toEqual([deployed.frames[0].data.slice(0, 10), VALIDATE, SET_RULES, "0x"]);
+  expect(sent.signatures).toHaveLength(2);
+
+  // VERIFY pays for decoding the rules and for SPHINCS-; there's no signal to ask yet.
+  expect(fixedLimits(ctx.account, false, transfer, {}).verify).toBeGreaterThan(fixedLimits(plain.account, false, transfer, {}).verify + 150_000n);
+
+  // Once deployed, the safeguards are the wallet's own: no setRules frame.
+  expect(buildTransaction({ ...ctx, deployed: true }, transfer, limits).frames.map((f) => f.data.slice(0, 10))).toEqual([VALIDATE, "0x"]);
+});
+
+test("before deployment a raised signal changes nothing: the new wallet has no rules to read yet", async () => {
+  const ctx = { ...(await subscribed(false)), signals: raised };
+  const unsigned = buildTransaction(ctx, transfer, limits);
+  expect(unsigned.frames[1].data).toBe(buildTransaction({ ...ctx, account: { ...ctx.account, rules: [] } }, transfer, limits).frames[1].data);
+  expect(requiredSchemes(ctx.account, transfer, raised, false).map((s) => s.scheme)).toEqual(["ecdsa", "sphincs"]);
+});
+
+test("without ECDSA among the schemes, the first transaction's owner entry comes after the safeguards' backups", async () => {
+  const ctx = await context(["sphincs"], false);
+  const falcon = (await deriveAccount(seed, ["falcon"])).schemes[0];
+  const guarded = { ...ctx, account: { ...ctx.account, rules: [{ signal, ...falcon }] } };
+  const unsigned = buildTransaction(guarded, transfer, limits);
+  expect(requiredSchemes(guarded.account, transfer, {}, false).map((s) => s.scheme)).toEqual(["sphincs", "falcon"]);
+  expect(unsigned.signatures.map((s) => s.scheme)).toEqual(["ARBITRARY", "ARBITRARY", "SECP256K1"].map((n) => tx.sigScheme(PROFILE, n)));
 });
