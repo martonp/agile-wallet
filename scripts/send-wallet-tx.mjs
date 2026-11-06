@@ -7,7 +7,7 @@
 //
 // Test keys only: every key is derived from SEED in the clear.
 import { readFileSync } from "node:fs";
-import { createPublicClient, createWalletClient, http, encodeFunctionData, parseEther, formatEther } from "viem";
+import { createPublicClient, createWalletClient, http, encodeFunctionData, parseEther, formatEther, zeroAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { getProfile } from "@forshtat/hegota-support/profiles";
 import * as tx from "@forshtat/hegota-support/tx";
@@ -40,8 +40,9 @@ const FACTORY_ABI = [
 
 // ---- keys, schemes, wallet ----------------------------------------------------------------------------------
 const owner = ecdsa(seed);
-const signers = { ecdsa: [deployment.ecdsaVerifier, owner], falcon: [deployment.falconVerifier, falcon(seed)], sphincs: [deployment.sphincsVerifier, sphincs(seed)] };
-const chosen = names.map((n) => ({ verifier: signers[n][0], publicKey: signers[n][1].publicKey, signer: signers[n][1] }));
+// ECDSA is native: verifier address(0), signed with a protocol SECP256K1 entry.
+const signers = { ecdsa: [zeroAddress, owner], falcon: [deployment.falconVerifier, falcon(seed)], sphincs: [deployment.sphincsVerifier, sphincs(seed)] };
+const chosen = names.map((n) => ({ native: n === "ecdsa", verifier: signers[n][0], publicKey: signers[n][1].publicKey, signer: signers[n][1] }));
 const schemes = chosen.map(({ verifier, publicKey }) => ({ verifier, publicKey }));
 
 const wallet = await client.readContract({ address: deployment.factory, abi: FACTORY_ABI, functionName: "walletAddress", args: [owner.address] });
@@ -65,17 +66,21 @@ function build({ deployGas, verifyGas }) {
   }
   frames.push(tx.frame(profile, "VERIFY", { scope: "EXECUTION_AND_PAYMENT", target: null, execution: verifyGas, data: encodeFunctionData({ abi: WALLET_ABI, functionName: "validate", args: [schemes] }) }));
   frames.push(tx.frame(profile, "SENDER", { target: RECIPIENT, execution: 50_000n, state: 200_000n, value: parseEther("0.001") }));
-  const signatures = chosen.map(() => ({ scheme: tx.sigScheme(profile, "ARBITRARY"), signer: "0x", msg: "0x", signature: "0x" }));
-  if (!deployed) signatures.push(tx.secp256k1Placeholder(profile, owner.address));
+  const signatures = chosen.map((c) => (c.native ? tx.secp256k1Placeholder(profile, c.signer.address) : { scheme: tx.sigScheme(profile, "ARBITRARY"), signer: "0x", msg: "0x", signature: "0x" }));
+  // The owner authorises the deployment with a SECP256K1 entry; an ECDSA scheme's entry by the owner does too.
+  if (!deployed && !names.includes("ecdsa")) signatures.push(tx.secp256k1Placeholder(profile, owner.address));
   return tx.newTx({ chainId, sender: wallet, nonceSeq: nonce, frames, signatures, fees: { maxFeePerGas: 2_000_000_000n } });
 }
 
 async function sign(unsigned) {
   const hash = tx.sigHash(profile, unsigned);
   const signatures = [...unsigned.signatures];
-  for (let i = 0; i < chosen.length; i++) signatures[i] = { ...signatures[i], signature: await chosen[i].signer.sign(hash) };
-  const signed = { ...unsigned, signatures };
-  return deployed ? signed : tx.signTx(profile, signed, owner.privateKey, chosen.length);
+  for (let i = 0; i < chosen.length; i++) if (!chosen[i].native) signatures[i] = { ...signatures[i], signature: await chosen[i].signer.sign(hash) };
+  let signed = { ...unsigned, signatures };
+  for (let i = 0; i < signatures.length; i++) {
+    if (signatures[i].scheme === tx.sigScheme(profile, "SECP256K1")) signed = await tx.signTx(profile, signed, (chosen[i]?.signer ?? owner).privateKey, i);
+  }
+  return signed;
 }
 
 // Simulate with generous limits, then declare each prefix frame's measured gas plus a margin.

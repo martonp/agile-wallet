@@ -8,16 +8,11 @@ import { keccak256, toHex } from "viem";
 const contracts = fileURLToPath(new URL("../contracts/", import.meta.url));
 const SIGNER_C13 = `${contracts}lib/SPHINCS-/signers/signer-wasm/target/release/signer-c13`;
 
-/** ECDSA: publicKey = 20-byte address, signature = r ‖ s ‖ v (v = 27/28). */
+/** ECDSA, native: publicKey = 20-byte address; it signs a protocol SECP256K1 entry (hegota-support's signTx). */
 export function ecdsa(seed) {
   const privateKey = keccak256(toHex(`ecdsa:${seed}`));
   const account = privateKeyToAccount(privateKey);
-  return {
-    privateKey,
-    address: account.address,
-    publicKey: account.address,
-    sign: (digest) => account.sign({ hash: digest }),
-  };
+  return { privateKey, address: account.address, publicKey: account.address };
 }
 
 /** Falcon-512 via ZKNOX falcon.js: publicKey = 1024 bytes, signature = salt (40) ‖ s2 (1024). */
