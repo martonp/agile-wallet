@@ -1,6 +1,6 @@
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { deriveSigningKeys, wipeKeys } from "./derive";
+import { type SigningKeys, deriveSigningKeys, wipeKeys } from "./derive";
 import { ecdsaAddress } from "./ecdsa";
 import { falconPublicKey } from "./falcon";
 import { CONTRACTS, type Network } from "./network";
@@ -23,17 +23,18 @@ export async function deriveAccount(seed: Uint8Array, schemes: Scheme[]): Promis
   if (chosen.length === 0) throw new Error("Choose at least one scheme");
   const keys = deriveSigningKeys(seed, ["ecdsa", ...chosen]);
   try {
-    const owner = hex(ecdsaAddress(keys.ecdsa!));
-    const publicKey = async (scheme: Scheme) => {
-      if (scheme === "ecdsa") return owner;
-      return hex(scheme === "falcon" ? await falconPublicKey(keys.falcon!) : await sphincsPublicKey(keys.sphincs!));
-    };
     const out: Account["schemes"] = [];
-    for (const scheme of chosen) out.push({ scheme, publicKey: await publicKey(scheme) });
-    return { owner, schemes: out };
+    for (const scheme of chosen) out.push({ scheme, publicKey: await publicKeyOf(scheme, keys) });
+    return { owner: await publicKeyOf("ecdsa", keys), schemes: out };
   } finally {
     wipeKeys(keys);
   }
+}
+
+// A scheme's public key, as its verifier takes it, from its signing key: for ECDSA, the address.
+export async function publicKeyOf(scheme: Scheme, keys: SigningKeys): Promise<string> {
+  if (scheme === "ecdsa") return hex(ecdsaAddress(keys.ecdsa!));
+  return hex(scheme === "falcon" ? await falconPublicKey(keys.falcon!) : await sphincsPublicKey(keys.sphincs!));
 }
 
 export async function saveAccount(account: Account): Promise<void> {
