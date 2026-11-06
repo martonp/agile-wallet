@@ -56,11 +56,12 @@ async function subscribedWallet(): Promise<Account> {
   return subscribed;
 }
 
-test("adding as a scheme the backup of a rule that isn't raised derives and signs with its key", { timeout: 60_000 }, async () => {
+test("moving an unraised rule's backup into the schemes derives and signs with its key", { timeout: 60_000 }, async () => {
   const account = await subscribedWallet();
   await expect(
     changeSchemes("pw", account, { schemes: ["ecdsa", "sphincs"], rules: [{ signal, scheme: "sphincs" }] }),
-  ).rejects.toThrow("stop here");
+  ).rejects.toThrow("is already a required scheme"); // a backup can't also be a scheme
+  await expect(changeSchemes("pw", account, { schemes: ["ecdsa", "sphincs"], rules: [] })).rejects.toThrow("stop here");
   expect(sent).toHaveLength(1); // signed with ECDSA and SPHINCS-, then sent
   expect((await loadAccount(0))!.schemes.map((s) => s.scheme)).toEqual(["ecdsa"]); // not mined: unchanged
 });

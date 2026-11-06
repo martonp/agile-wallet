@@ -306,7 +306,7 @@ export async function changeSchemes(
 ): Promise<Sent> {
   const chosen = SCHEMES.filter((s) => next.schemes.includes(s));
   if (chosen.length === 0) throw new Error("Keep at least one scheme");
-  checkSignals(next.rules);
+  checkRules(next.rules, chosen);
   // Each name has one key per seed, so names tell whether anything changes.
   const sameRules = (a: { signal: string; scheme: Scheme }[], b: { signal: string; scheme: Scheme }[]) =>
     a.length === b.length && a.every((r, i) => r.signal.toLowerCase() === b[i].signal.toLowerCase() && r.scheme === b[i].scheme);
@@ -341,10 +341,14 @@ export async function changeSchemes(
   return sent;
 }
 
-// Only signals the extension reads: a raised signal it doesn't read would leave a backup unsigned.
-function checkSignals(rules: RuleChoice[]) {
+// Only signals the extension reads: a raised signal it doesn't read would leave a backup unsigned. And a backup
+// that is already one of the schemes would add nothing once its signal is raised.
+function checkRules(rules: RuleChoice[], schemes: Scheme[]) {
   if (rules.some((r) => !SIGNALS.some((s) => s.address.toLowerCase() === r.signal.toLowerCase()))) {
     throw new Error("Unknown break signal");
+  }
+  if (rules.some((r) => schemes.includes(r.scheme))) {
+    throw new Error("A safeguard's backup is already a required scheme: choose another backup or turn the safeguard off");
   }
 }
 
@@ -360,7 +364,7 @@ export async function changeSchemesBeforeDeployment(
 ): Promise<Account> {
   const chosen = SCHEMES.filter((s) => next.schemes.includes(s));
   if (chosen.length === 0) throw new Error("Keep at least one scheme");
-  checkSignals(next.rules);
+  checkRules(next.rules, chosen);
   if ((await accountState(await loadNetwork(), account)).deployed) {
     throw new Error("The wallet has been deployed since this screen opened, so changing its schemes now takes a transaction.");
   }

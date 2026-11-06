@@ -47,8 +47,8 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
   const current = account?.schemes.map((s) => s.scheme) ?? [];
   const schemesChanged = SCHEMES.some((s) => current.includes(s) !== next.includes(s));
   const changed = choicesChanged(account, next, nextSafeguards);
-  const rulesChanged = safeguardsChanged(account, nextSafeguards);
-  const rules = ruleChoices(nextSafeguards);
+  const rulesChanged = safeguardsChanged(account, nextSafeguards, next);
+  const rules = ruleChoices(nextSafeguards, next);
   // A change needs signatures from every scheme on before or after it, from the backups of raised safeguards, and
   // from the backup of every safeguard set by it.
   const raised = account ? raisedRules(account, signals).map((r) => r.scheme) : [];

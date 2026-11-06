@@ -60,8 +60,13 @@ test("before deployment, safeguards are saved too; a backup's key is derived onc
   expect(guarded.rules).toEqual([{ signal, ...sphincs }]);
   expect((await loadAccount(0))!.rules).toEqual([{ signal, ...sphincs }]);
 
-  // The backup's key is known now: making it a scheme too, or dropping the safeguard, needs no password.
-  const both = await changeSchemesBeforeDeployment("", guarded, { schemes: ["ecdsa", "sphincs"], rules: [{ signal, scheme: "sphincs" }] });
-  expect(both.schemes).toEqual([account.schemes[0], sphincs]);
-  expect((await changeSchemesBeforeDeployment("", both, { schemes: ["ecdsa"], rules: [] })).rules).toEqual([]);
+  // A backup can't also be a scheme: it would add nothing.
+  await expect(
+    changeSchemesBeforeDeployment("", guarded, { schemes: ["ecdsa", "sphincs"], rules: [{ signal, scheme: "sphincs" }] }),
+  ).rejects.toThrow("is already a required scheme");
+
+  // The backup's key is known now: turning the backup into a scheme needs no password.
+  const moved = await changeSchemesBeforeDeployment("", guarded, { schemes: ["ecdsa", "sphincs"], rules: [] });
+  expect(moved.schemes).toEqual([account.schemes[0], sphincs]);
+  expect(moved.rules).toEqual([]);
 });

@@ -78,7 +78,8 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
   }
 
   const undeployed = state?.deployed === false;
-  const changed = choicesChanged(account, schemes, safeguards);
+  // Only a first send changes the wallet's setup; a deployed wallet's goes through Change Schemes.
+  const changed = undeployed && choicesChanged(account, schemes, safeguards);
 
   function next() {
     const value = check();
@@ -103,7 +104,7 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
     try {
       // The deployment's choices are saved first, so the first transaction carries them.
       const from = changed
-        ? await changeSchemesBeforeDeployment(password, account, { schemes, rules: ruleChoices(safeguards) })
+        ? await changeSchemesBeforeDeployment(password, account, { schemes, rules: ruleChoices(safeguards, schemes) })
         : account;
       show(from);
       const result = await sendTransfer(password, from, { to: to as Address, value }, onProgress);
@@ -112,9 +113,13 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
     } catch (e) {
       setTracker((t) => t && { ...t, failed: true });
       setError(explain(e));
-      // The deployment's choices may have been saved before the failure: the fee follows them.
+      // The deployment's choices may have been saved before the failure, and the wallet may have been deployed from
+      // elsewhere meanwhile: the fee and the state follow.
       const latest = await loadAccount(index);
-      if (latest) setFee(await transferFee(latest).then((f) => f.maxFee, () => fee));
+      if (latest) {
+        setFee(await transferFee(latest).then((f) => f.maxFee, () => fee));
+        setState(await accountState(await loadNetwork(), latest).catch(() => state));
+      }
     } finally {
       setPassword("");
       setBusy(false);
