@@ -8,7 +8,7 @@ import { expect, test } from "vitest";
 import { deriveAccount } from "./account";
 import { deriveSigningKeys } from "./derive";
 import { CONTRACTS } from "./network";
-import { type Action, type TransferContext, buildTransaction, fixedLimits, requiredSchemes, signTransaction } from "./transaction";
+import { type Action, type TransferContext, buildTransaction, fixedLimits, maxFee, requiredSchemes, signTransaction } from "./transaction";
 
 const PROFILE = getProfile("ethrex-eip8141-tracer");
 const seed = new Uint8Array(64).fill(5);
@@ -17,7 +17,7 @@ const limits = { deploy: 100_000n, verify: 200_000n };
 
 async function context(schemes: ("ecdsa" | "falcon" | "sphincs")[], deployed: boolean): Promise<TransferContext> {
   const account = await deriveAccount(seed, schemes);
-  return { account, wallet: "0x" + "11".repeat(20) as `0x${string}`, deployed, chainId: 1337n, nonce: 0n, maxFeePerGas: 2n * 10n ** 9n };
+  return { account, wallet: "0x" + "11".repeat(20) as `0x${string}`, deployed, balance: 10n ** 18n, chainId: 1337n, nonce: 0n, maxFeePerGas: 2n * 10n ** 9n };
 }
 
 test("the first transaction deploys, validates, then transfers", async () => {
@@ -90,4 +90,12 @@ test("a scheme change calls setSchemes on the wallet and needs the added schemes
   );
   // VERIFY pays for every required signature, Falcon's included.
   expect(fixedLimits(ctx.account, true, change).verify).toBeGreaterThan(fixedLimits(ctx.account, true, transfer).verify + 800_000n);
+});
+
+test("the max fee covers what the mempool charged for a first ECDSA + SPHINCS- transfer", async () => {
+  // The devnet's mempool said such a transfer would owe 886,245 gas at the max fee per gas.
+  const ctx = await context(["ecdsa", "sphincs"], false);
+  const fee = maxFee(ctx, transfer);
+  expect(fee).toBeGreaterThanOrEqual(886_245n * ctx.maxFeePerGas);
+  expect(fee).toBeLessThan(1_000_000n * ctx.maxFeePerGas); // an upper bound, but not a wild one
 });

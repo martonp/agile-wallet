@@ -2,8 +2,8 @@ import { getProfile } from "@forshtat/hegota-support/profiles";
 import { toWire } from "@forshtat/hegota-support/rpc";
 import * as tx from "@forshtat/hegota-support/tx";
 import type { FrameTx, SignatureEntry } from "@forshtat/hegota-support/tx";
-import { type Address, type Hex, bytesToHex, encodeFunctionData, hexToBytes } from "viem";
-import { type Account, accountState, clearPendingSchemes, publicKeyOf, saveAccount, savePendingSchemes } from "./account";
+import { type Address, type Hex, bytesToHex, encodeFunctionData, hexToBytes, zeroAddress } from "viem";
+import { type Account, accountState, clearPendingSchemes, formatEth, publicKeyOf, saveAccount, savePendingSchemes } from "./account";
 import type { SigningKeys } from "./derive";
 import { ecdsaSign } from "./ecdsa";
 import { falconSign } from "./falcon";
@@ -49,6 +49,7 @@ export interface TransferContext {
   account: Account;
   wallet: Address;
   deployed: boolean;
+  balance: bigint; // wei
   chainId: bigint;
   nonce: bigint;
   maxFeePerGas: bigint;
@@ -124,6 +125,25 @@ export function fixedLimits(account: Account, deployed: boolean, action: Action)
     schemes.reduce((g, s) => g + table[s.scheme], table.base);
   const verify = sum(VERIFY_GAS, requiredSchemes(account, action)) + (action.type === "setSchemes" ? VERIFY_GAS_SET_SCHEMES : 0n);
   return { deploy: deployed ? 0n : sum(DEPLOY_GAS, account.schemes), verify };
+}
+
+const SIGNATURE_BYTES: Record<Scheme, number> = { ecdsa: 65, falcon: 1064, sphincs: 3688 };
+
+// The most a transaction can cost in fees, which the mempool requires the balance to cover on top of the value:
+// every gas limit (each frame's execution and state gas, plus the transaction's own cost, bounded here by 21,000
+// and 16 gas per byte of its encoding with signatures) at the max fee per gas.
+export function maxFee(ctx: TransferContext, action: Action): bigint {
+  const unsigned = buildTransaction(ctx, action, fixedLimits(ctx.account, ctx.deployed, action));
+  const frames = unsigned.frames.reduce((gas, f) => gas + f.limits.execution + f.limits.state, 0n);
+  const signatureBytes = signers(unsigned, requiredSchemes(ctx.account, action)).reduce((n, s) => n + SIGNATURE_BYTES[s.scheme], 0);
+  const bytes = (tx.encodeTx(PROFILE, unsigned).length - 2) / 2 + signatureBytes;
+  return (frames + 21_000n + 16n * BigInt(bytes)) * ctx.maxFeePerGas;
+}
+
+// What a transfer from `account` needs on top of its value, and what the wallet holds, for the Send screen.
+export async function transferFee(account: Account): Promise<{ maxFee: bigint; balance: bigint }> {
+  const ctx = await transferContext(await loadNetwork(), account);
+  return { maxFee: maxFee(ctx, { type: "transfer", to: zeroAddress, value: 0n }), balance: ctx.balance };
 }
 
 // The signature entries of a transaction, in order: one per required scheme, then the owner's if there is one more.
@@ -236,6 +256,11 @@ async function submit(
         throw new Error("These keys aren't this account's: its owner doesn't match");
       }
       const action = await plan(keys);
+      // Checked before signing: the mempool would refuse it after seconds of signing, with a message in wei.
+      const needs = (action.type === "transfer" ? action.value : 0n) + maxFee(ctx, action);
+      if (needs > ctx.balance) {
+        throw new Error(`Not enough ETH: this needs up to ${formatEth(needs)} ETH with the network fee, and the wallet holds ${formatEth(ctx.balance)}.`);
+      }
       const required = requiredSchemes(account, action);
       const unsigned = buildTransaction(ctx, action, fixedLimits(account, ctx.deployed, action));
       await onProgress({ type: "signers", signers: signers(unsigned, required) });
@@ -281,6 +306,7 @@ async function transferContext(network: Network, account: Account): Promise<Tran
     account,
     wallet: state.address as Address,
     deployed: state.deployed,
+    balance: state.balance,
     chainId: BigInt(chainId),
     nonce: BigInt(nonce),
     maxFeePerGas: 2n * BigInt(block.baseFeePerGas ?? "0x0") + TIP, // room for the base fee to double

@@ -6,7 +6,7 @@ import { SendProgress, type Tracker } from "../components/SendProgress";
 import { shortAddress } from "../format";
 import { type Account, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
-import { type Progress, type Sent, sendTransfer } from "../../wallet/transaction";
+import { type Progress, type Sent, sendTransfer, transferFee } from "../../wallet/transaction";
 import { WrongPasswordError } from "../../wallet/vault";
 
 // Resolves once the browser has painted: a signer then blocks the thread only after its "signing…" is on screen.
@@ -15,6 +15,7 @@ const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() 
 export function Send({ index, onBack }: { index: number; onBack: () => void }) {
   const [account, setAccount] = useState<Account>();
   const [state, setState] = useState<AccountState>();
+  const [fee, setFee] = useState<bigint>();
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
   const [password, setPassword] = useState("");
@@ -28,7 +29,9 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
       const network = await loadNetwork();
       const loaded = await syncAccount(network, index).catch(() => loadAccount(index));
       setAccount(loaded);
-      if (loaded) setState(await accountState(network, loaded).catch(() => undefined));
+      if (!loaded) return;
+      setState(await accountState(network, loaded).catch(() => undefined));
+      setFee(await transferFee(loaded).then((f) => f.maxFee, () => undefined));
     })();
   }, []);
 
@@ -42,7 +45,9 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
       return "Enter an amount in ETH.";
     }
     if (value <= 0n) return "Enter an amount above zero.";
-    if (state && value > state.balance) return "That's more than the wallet holds.";
+    if (state && value + (fee ?? 0n) > state.balance) {
+      return fee ? `That plus the network fee (up to ${formatEth(fee, 5)} ETH) is more than the wallet holds.` : "That's more than the wallet holds.";
+    }
     return value;
   }
 
@@ -76,6 +81,7 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
       setTo("");
       setAmount("");
       if (state) setState(await accountState(await loadNetwork(), account).catch(() => state));
+      setFee(await transferFee(account).then((f) => f.maxFee, () => fee));
     } catch (e) {
       setTracker((t) => t && { ...t, failed: true });
       setError(e instanceof WrongPasswordError ? "Wrong password. Try again." : e instanceof Error ? e.message : String(e));
@@ -109,6 +115,10 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
             {account?.schemes.map((s) => (
               <SchemeChip key={s.scheme} scheme={s.scheme} />
             ))}
+          </div>
+          <div className="row" style={{ justifyContent: "space-between", marginTop: 10, fontSize: 13 }}>
+            <span style={{ color: "var(--muted)" }}>Network fee</span>
+            <span>{fee !== undefined ? `up to ${formatEth(fee, 5)} ETH` : "—"}</span>
           </div>
         </div>
       )}
