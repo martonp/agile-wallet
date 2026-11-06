@@ -319,3 +319,21 @@ textarea {
   border-radius: 8px;
   shape-rendering: crispEdges;
 }
+
+/* A safeguard: its toggle row, then its status. */
+.safeguard .toggle-row {
+  cursor: default; /* not a label: clicking the text would toggle the switch while choosing a backup */
+}
+
+.safeguard .hint {
+  margin-bottom: 4px;
+}
+
+.select {
+  font: inherit;
+  color: inherit;
+  background: var(--panel);
+  border: 0.5px solid var(--line);
+  border-radius: 6px;
+  padding: 1px 4px;
+}

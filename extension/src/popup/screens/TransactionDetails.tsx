@@ -3,6 +3,7 @@ import { IconCheck, IconCopy, IconLoader2, IconX } from "@tabler/icons-react";
 import { Header } from "../components/Header";
 import { SchemeChip } from "../components/SchemeChip";
 import { shortAddress } from "../format";
+import { SCHEME_INFO } from "../schemes";
 import { kindOf } from "../transactions";
 import { formatEth } from "../../wallet/account";
 import { type HistoryEntry, loadHistory, syncHistory } from "../../wallet/history";
@@ -63,11 +64,18 @@ export function TransactionDetails({ index, hash, onBack }: { index: number; has
             </span>
           </>
         ) : (
-          <div className="chips" style={{ justifyContent: "center" }}>
-            {entry.schemes!.map((s) => (
-              <SchemeChip key={s} scheme={s} />
-            ))}
-          </div>
+          <>
+            <div className="chips" style={{ justifyContent: "center" }}>
+              {entry.schemes!.map((s) => (
+                <SchemeChip key={s} scheme={s} />
+              ))}
+            </div>
+            {entry.rules && (
+              <span className="tx-kind">
+                Safeguards: {entry.rules.length === 0 ? "none" : entry.rules.map((s) => SCHEME_INFO[s].label).join(", ")}
+              </span>
+            )}
+          </>
         )}
         <Status entry={entry} />
       </div>
@@ -107,6 +115,13 @@ function Status({ entry }: { entry: HistoryEntry }) {
     return (
       <span className="tx-pill">
         <IconLoader2 size={14} className="spin" aria-hidden /> Waiting for a block
+      </span>
+    );
+  }
+  if (entry.status === "dropped") {
+    return (
+      <span className="tx-pill tx-pill-failed">
+        <IconX size={14} aria-hidden /> Dropped: a safeguard switched on
       </span>
     );
   }

@@ -5,10 +5,10 @@ import { AccountMenu } from "../components/AccountMenu";
 import { Activity } from "../components/Activity";
 import { Header } from "../components/Header";
 import { shortAddress } from "../format";
-import { SCHEMES } from "../schemes";
-import { type Account as AccountData, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
+import { SCHEMES, SCHEME_INFO } from "../schemes";
+import { type Account as AccountData, type AccountState, accountState, formatEth, loadAccount, raisedRules, syncAccount } from "../../wallet/account";
 import { type HistoryEntry, syncHistory } from "../../wallet/history";
-import { loadNetwork } from "../../wallet/network";
+import { SIGNALS, loadNetwork } from "../../wallet/network";
 
 type Props = {
   index: number;
@@ -87,7 +87,10 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
     }
   }
 
-  const schemes = account?.schemes.map((s) => s.scheme) ?? [];
+  // A raised safeguard's backup signs every transaction, as a scheme does.
+  const raised = account && state ? raisedRules(account, state.signals) : [];
+  const schemes = [...new Set([...(account?.schemes.map((s) => s.scheme) ?? []), ...raised.map((r) => r.scheme)])];
+  const raisedSignals = SIGNALS.filter((s) => (state?.signals[s.address.toLowerCase()] ?? 0) > 0);
   return (
     <div className="screen">
       <Header title={account ? <AccountMenu current={account} onSelect={onSelect} onAdd={onAddAccount} onRenamed={() => loadAccount(index).then(setAccount)} /> : ""}>
@@ -119,8 +122,39 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
         </p>
       )}
       {state && !state.schemesMatch && (
-        <div className="warning">The schemes saved here aren't this wallet's schemes on chain, so its transactions will fail.</div>
+        <div className="warning">
+          The schemes and safeguards saved here aren't this wallet's on chain, so its transactions will fail.
+        </div>
       )}
+      {state &&
+        raisedSignals.map((s) => {
+          const broken = SCHEME_INFO[s.breaks].label;
+          const rule = raised.find((r) => r.signal.toLowerCase() === s.address.toLowerCase());
+          if (rule) {
+            return (
+              <div key={s.address} className="warning">
+                {broken} was signalled broken: {SCHEME_INFO[rule.scheme].label} now also signs every transaction.
+              </div>
+            );
+          }
+          // The owner key fixes an undeployed wallet's address, and it is ECDSA: whoever breaks ECDSA can deploy it first.
+          if (!state.deployed && s.breaks === "ecdsa") {
+            return (
+              <div key={s.address} className="warning">
+                {broken} was signalled broken and this wallet isn't deployed, so a safeguard can't protect it. Move its
+                funds.
+              </div>
+            );
+          }
+          if (schemes.every((scheme) => scheme === s.breaks)) {
+            return (
+              <div key={s.address} className="warning">
+                {broken} was signalled broken and it is this wallet's only scheme. Add another one.
+              </div>
+            );
+          }
+          return null;
+        })}
       <div className="row">
         <button className="btn btn-primary" onClick={onSend}>
           Send
