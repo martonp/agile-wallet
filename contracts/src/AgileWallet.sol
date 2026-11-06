@@ -7,14 +7,16 @@ import {Scope, TxParam, FrameParam, FrameMode, SigParam} from "hegota-support/Pa
 import {IVerifier} from "./IVerifier.sol";
 
 /// An EIP-8141 account that needs a valid signature for every scheme in its list. A scheme is any IVerifier
-/// together with one public key, so new signature schemes need no change here. The wallet stores only the hash
+/// together with one public key, so new signature schemes need no change here, or native ECDSA: verifier
+/// address(0) and a 20-byte address, signed with a protocol SECP256K1 entry. The wallet stores only the hash
 /// of its list; every transaction carries the list itself.
 ///
 /// Deployed once as the implementation; every user gets an ERC-1167 proxy from AgileWalletFactory.
 ///
 /// A transaction from the wallet:
 ///   frames:     [deploy (first tx only)], VERIFY → validate(schemes), SENDER frames (transfers, setSchemes)
-///   signatures: one ARBITRARY entry per required scheme, in order, each over the canonical sig hash
+///   signatures: one entry per required scheme, in order, each over the canonical sig hash: SECP256K1 for
+///               native ECDSA, ARBITRARY for the others
 contract AgileWallet is HegotaSupport(Devnet.ERC8421_WORKSHOP) {
     struct Scheme {
         IVerifier verifier;
@@ -55,6 +57,10 @@ contract AgileWallet is HegotaSupport(Devnet.ERC8421_WORKSHOP) {
         bytes32 sigHash = bytes32(txparam(TxParam.SIG_HASH));
 
         for (uint256 i; i < required.length; i++) {
+            if (address(required[i].verifier) == address(0)) {
+                require(_isSecp256k1By(i, required[i].publicKey), "bad ECDSA signature");
+                continue;
+            }
             require(sigparam(i, SigParam.SCHEME) == ARBITRARY, "not an ARBITRARY signature");
             bytes memory sig = sigdatacopy(0, sigparam(i, SigParam.SIGNATURE_LENGTH), i);
             require(required[i].verifier.verify(required[i].publicKey, sigHash, sig), "bad signature");
@@ -84,11 +90,17 @@ contract AgileWallet is HegotaSupport(Devnet.ERC8421_WORKSHOP) {
     function _signedBy(address signer) private view returns (bool) {
         uint256 count = txparam(TxParam.SIGNATURE_COUNT);
         for (uint256 i; i < count; i++) {
-            if (sigparam(i, SigParam.SCHEME) != SECP256K1) continue;
-            if (sigparam(i, SigParam.MSG) != 0) continue; // an explicit digest could be any old signature
-            if (sigparam(i, SigParam.RESOLVED_SIGNER) == uint160(signer)) return true;
+            if (_isSecp256k1By(i, abi.encodePacked(signer))) return true;
         }
         return false;
+    }
+
+    /// Whether signature entry `i` is a protocol-verified SECP256K1 signature over the canonical sig hash by the
+    /// 20-byte address `signer`.
+    function _isSecp256k1By(uint256 i, bytes memory signer) private view returns (bool) {
+        if (signer.length != 20 || sigparam(i, SigParam.SCHEME) != SECP256K1) return false;
+        if (sigparam(i, SigParam.MSG) != 0) return false; // an explicit digest could be any old signature
+        return sigparam(i, SigParam.RESOLVED_SIGNER) == uint160(bytes20(signer));
     }
 
     /// `current` plus every scheme this transaction's setSchemes calls on this wallet add.

@@ -32,7 +32,6 @@ contract Deploy is Script {
         address helper = _deploy(f1600Init);
         address falcon8 = _deploy(abi.encodePacked(vm.getCode("ZKNOX_falcon8.sol:ZKNOX_falcon8"), abi.encode(helper)));
         address sphincsC13 = _deploy(vm.getCode("SPHINCs-C13Asm.sol:SphincsC13Asm"));
-        address ecdsa = _deploy(vm.getCode("EcdsaVerifier.sol:EcdsaVerifier"));
         address falcon = _deploy(abi.encodePacked(vm.getCode("FalconVerifier.sol:FalconVerifier"), abi.encode(falcon8)));
         address sphincs = _deploy(abi.encodePacked(vm.getCode("SphincsVerifier.sol:SphincsVerifier"), abi.encode(sphincsC13)));
         address factory = _deploy(vm.getCode("AgileWalletFactory.sol:AgileWalletFactory"));
@@ -42,7 +41,6 @@ contract Deploy is Script {
         vm.serializeAddress(o, "f1600Helper", helper);
         vm.serializeAddress(o, "falcon8", falcon8);
         vm.serializeAddress(o, "sphincsC13", sphincsC13);
-        vm.serializeAddress(o, "ecdsaVerifier", ecdsa);
         vm.serializeAddress(o, "falconVerifier", falcon);
         vm.serializeAddress(o, "sphincsVerifier", sphincs);
         vm.serializeAddress(o, "factory", factory);

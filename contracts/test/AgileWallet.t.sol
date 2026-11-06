@@ -13,18 +13,15 @@ contract AgileWalletTest is Test {
     uint256 private constant VERIFY = 1;
     uint256 private constant SENDER = 2;
     uint256 private constant ARBITRARY = 0;
-    uint256 private constant SECP256K1 = 1;
     uint256 private constant EXECUTION_AND_PAYMENT = 3;
     bytes32 private constant SIG_HASH = keccak256("frame tx sig hash");
 
     FrameTxMock private frameTx = new FrameTxMock();
     AgileWalletFactory private factory = new AgileWalletFactory();
-    // deployCode, not an import: EcdsaVerifier then compiles with one solc version, so its CREATE2 address is fixed
-    IVerifier private ecdsa = IVerifier(deployCode("EcdsaVerifier.sol:EcdsaVerifier"));
+    IVerifier private constant NATIVE_ECDSA = IVerifier(address(0));
     MockVerifier private pq = new MockVerifier();
 
-    uint256 private ecdsaPrivateKey = 0xA11CE;
-    address private owner = vm.addr(ecdsaPrivateKey);
+    address private owner = address(0xA11CE);
     bytes private ecdsaKey = abi.encodePacked(owner);
     bytes private falconKey = "falcon public key";
     bytes private sphincsKey = "sphincs public key";
@@ -52,7 +49,7 @@ contract AgileWalletTest is Test {
 
     function _all() private view returns (AgileWallet.Scheme[] memory s) {
         s = new AgileWallet.Scheme[](3);
-        s[0] = _scheme(ecdsa, ecdsaKey);
+        s[0] = _scheme(NATIVE_ECDSA, ecdsaKey);
         s[1] = _scheme(IVerifier(address(pq)), falconKey);
         s[2] = _scheme(IVerifier(address(pq)), sphincsKey);
     }
@@ -64,8 +61,7 @@ contract AgileWalletTest is Test {
     }
 
     function _signEcdsa() private {
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(ecdsaPrivateKey, SIG_HASH);
-        frameTx.addSignature(ARBITRARY, abi.encodePacked(r, s, v));
+        frameTx.addProtocolSignature(owner, 0);
     }
 
     function _signPq(bytes memory key) private {
@@ -181,11 +177,52 @@ contract AgileWalletTest is Test {
 
     function test_rejectsNonArbitrarySignature() public {
         _newTx(_all());
-        frameTx.addSignature(SECP256K1, "");
-        _signPq(falconKey);
+        _signEcdsa();
+        frameTx.addProtocolSignature(owner, 0); // in Falcon's slot
         _signPq(sphincsKey);
         vm.expectRevert("not an ARBITRARY signature");
         wallet.validate(_all());
+    }
+
+    // ---- native ECDSA -----------------------------------------------------------------------------------------
+
+    function test_ecdsaNeedsTheProtocolSignatureOfItsAddress() public {
+        _newTx(_all());
+        frameTx.addSignature(ARBITRARY, abi.encodePacked(owner)); // unverified bytes
+        _signPq(falconKey);
+        _signPq(sphincsKey);
+        vm.expectRevert("bad ECDSA signature");
+        wallet.validate(_all());
+
+        _newTx(_all());
+        frameTx.addProtocolSignature(address(0xBAD), 0); // someone else signed
+        _signPq(falconKey);
+        _signPq(sphincsKey);
+        vm.expectRevert("bad ECDSA signature");
+        wallet.validate(_all());
+
+        _newTx(_all());
+        frameTx.addProtocolSignature(owner, keccak256("some other message")); // not this transaction
+        _signPq(falconKey);
+        _signPq(sphincsKey);
+        vm.expectRevert("bad ECDSA signature");
+        wallet.validate(_all());
+    }
+
+    function test_firstTransactionNeedsOneOwnerSignature() public {
+        address otherOwner = address(0xB0B);
+        AgileWallet.Scheme[] memory initial = _all();
+        initial[0] = _scheme(NATIVE_ECDSA, abi.encodePacked(otherOwner));
+
+        // The ECDSA scheme's entry also authorises the deployment.
+        frameTx.reset(SIG_HASH);
+        frameTx.addProtocolSignature(otherOwner, 0);
+        _signPq(falconKey);
+        _signPq(sphincsKey);
+        wallet = AgileWallet(payable(factory.deploy(otherOwner, initial)));
+        frameTx.addFrame(VERIFY, address(wallet), abi.encodeCall(AgileWallet.validate, (initial)));
+        _expectApproved();
+        wallet.validate(initial);
     }
 
     // ---- setSchemes -------------------------------------------------------------------------------------------
@@ -198,7 +235,7 @@ contract AgileWalletTest is Test {
         _newTx(_all());
         _addSetSchemes(falconOnly);
         _signPq(falconKey);
-        vm.expectRevert("bad signature");
+        vm.expectRevert("bad ECDSA signature");
         wallet.validate(_all());
 
         // Every scheme enabled before the change signs: approved.
@@ -250,8 +287,8 @@ contract AgileWalletTest is Test {
         wallet.setSchemes(new AgileWallet.Scheme[](0));
 
         AgileWallet.Scheme[] memory twice = new AgileWallet.Scheme[](2);
-        twice[0] = _scheme(ecdsa, ecdsaKey);
-        twice[1] = _scheme(ecdsa, ecdsaKey);
+        twice[0] = _scheme(NATIVE_ECDSA, ecdsaKey);
+        twice[1] = _scheme(NATIVE_ECDSA, ecdsaKey);
         vm.expectRevert("duplicate scheme");
         wallet.setSchemes(twice);
     }
