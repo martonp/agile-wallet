@@ -99,3 +99,10 @@ test("the max fee covers what the mempool charged for a first ECDSA + SPHINCS- t
   expect(fee).toBeGreaterThanOrEqual(886_245n * ctx.maxFeePerGas);
   expect(fee).toBeLessThan(1_000_000n * ctx.maxFeePerGas); // an upper bound, but not a wild one
 });
+
+test("the fee of the largest transfer covers any smaller one, so balance - fee is a valid Max", async () => {
+  const ctx = await context(["ecdsa", "falcon", "sphincs"], true);
+  const largest = maxFee(ctx, { type: "transfer", to: `0x${"ff".repeat(20)}`, value: ctx.balance });
+  const max = ctx.balance - largest;
+  expect(max + maxFee(ctx, { type: "transfer", to: "0x110e4a7e47bc13b9f2cb9923e17f87b41ed0d9ed", value: max })).toBeLessThanOrEqual(ctx.balance);
+});

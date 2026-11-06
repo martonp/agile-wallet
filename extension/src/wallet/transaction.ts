@@ -2,7 +2,7 @@ import { getProfile } from "@forshtat/hegota-support/profiles";
 import { toWire } from "@forshtat/hegota-support/rpc";
 import * as tx from "@forshtat/hegota-support/tx";
 import type { FrameTx, SignatureEntry } from "@forshtat/hegota-support/tx";
-import { type Address, type Hex, bytesToHex, encodeFunctionData, hexToBytes, zeroAddress } from "viem";
+import { type Address, type Hex, bytesToHex, encodeFunctionData, hexToBytes } from "viem";
 import { type Account, accountState, clearPendingSchemes, formatEth, publicKeyOf, saveAccount, savePendingSchemes } from "./account";
 import type { SigningKeys } from "./derive";
 import { withSigningKeys } from "./keyring";
@@ -139,10 +139,13 @@ export function maxFee(ctx: TransferContext, action: Action): bigint {
   return (frames + 21_000n + 16n * BigInt(bytes)) * ctx.maxFeePerGas;
 }
 
-// What a transfer from `account` needs on top of its value, and what the wallet holds, for the Send screen.
+// What a transfer from `account` needs on top of its value, and what the wallet holds, for the Send screen. The fee
+// is that of the largest transfer (all of the balance, to an address with no zero bytes), whose encoding is the
+// longest, so it covers any real one: balance - fee is a Max amount that passes the check before signing.
 export async function transferFee(account: Account): Promise<{ maxFee: bigint; balance: bigint }> {
   const ctx = await transferContext(await loadNetwork(), account);
-  return { maxFee: maxFee(ctx, { type: "transfer", to: zeroAddress, value: 0n }), balance: ctx.balance };
+  const largest: Action = { type: "transfer", to: `0x${"ff".repeat(20)}`, value: ctx.balance };
+  return { maxFee: maxFee(ctx, largest), balance: ctx.balance };
 }
 
 // The signature entries of a transaction, in order: one per required scheme, then the owner's if there is one more.
@@ -265,7 +268,7 @@ async function submit(
       // Checked before signing: the mempool would refuse it after seconds of signing, with a message in wei.
       const needs = (action.type === "transfer" ? action.value : 0n) + maxFee(ctx, action);
       if (needs > ctx.balance) {
-        throw new Error(`Not enough ETH: this needs up to ${formatEth(needs)} ETH with the network fee, and the wallet holds ${formatEth(ctx.balance)}.`);
+        throw new Error(`Not enough ETH: this needs up to ${formatEth(needs, 6)} ETH with the network fee, and the wallet holds ${formatEth(ctx.balance, 6)}.`);
       }
       const required = requiredSchemes(account, action);
       const unsigned = buildTransaction(ctx, action, fixedLimits(account, ctx.deployed, action));

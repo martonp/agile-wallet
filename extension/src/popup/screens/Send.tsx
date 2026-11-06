@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type Address, isAddress, parseEther } from "viem";
+import { type Address, formatEther, isAddress, parseEther } from "viem";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { SendProgress, type Tracker } from "../components/SendProgress";
@@ -96,7 +96,13 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
         <input className="field mono" placeholder="0x…" value={to} spellCheck={false} onChange={(e) => setTo(e.target.value.trim())} />
       </div>
       <div>
-        <p className="label">Amount</p>
+        <div className="row" style={{ justifyContent: "space-between" }}>
+          <p className="label">Amount</p>
+          {/* Everything the wallet holds, less the most the network fee can be. */}
+          <button className="link" disabled={!state || fee === undefined || state.balance <= fee} onClick={() => setAmount(formatEther(state!.balance - fee!))}>
+            Max
+          </button>
+        </div>
         <input className="field" placeholder="0.0" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.trim())} />
         <p className="hint" style={{ marginTop: 4 }}>
           Available: {state ? formatEth(state.balance) : "—"} ETH
