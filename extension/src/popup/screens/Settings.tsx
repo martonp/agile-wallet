@@ -3,7 +3,6 @@ import { Header } from "../components/Header";
 import { explain } from "../../wallet/errors";
 import {
   LABELS,
-  LOCAL_DEVNET,
   type Network,
   checkNetwork,
   invalidField,
@@ -74,9 +73,6 @@ export function Settings({ onBack }: { onBack: () => void }) {
           />
         </div>
       ))}
-      <button className="link" style={{ alignSelf: "flex-start" }} onClick={() => setNetwork(LOCAL_DEVNET)}>
-        Reset to the local devnet
-      </button>
       {result.error && <p className="error">{result.error}</p>}
       {result.info && <p className="hint">{result.info}</p>}
       {result.lines && (
