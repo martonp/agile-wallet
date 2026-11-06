@@ -106,13 +106,35 @@ export function fixedLimits(account: Account, deployed: boolean): Limits {
   return { deploy: deployed ? 0n : sum(DEPLOY_GAS), verify: sum(VERIFY_GAS) };
 }
 
-// Signs every entry over the canonical sig hash: one per scheme, then the owner's if there is one more.
-export async function signTransfer(unsigned: FrameTx, account: Account, keys: SigningKeys): Promise<FrameTx> {
+// The signature entries of a transaction, in order: one per scheme, then the owner's if there is one more.
+export function signers(unsigned: FrameTx, account: Account): Signer[] {
+  return unsigned.signatures.map((_, i) =>
+    i < account.schemes.length ? { scheme: account.schemes[i].scheme, owner: false } : { scheme: "ecdsa", owner: true },
+  );
+}
+
+export interface Signer {
+  scheme: Scheme;
+  owner: boolean; // the owner's entry that authorises deployment, when ECDSA isn't one of the schemes
+}
+
+// Signs every entry over the canonical sig hash. `onProgress` hears of each signature before and after it; awaiting
+// it lets the popup paint "signing" before a signer blocks the thread for seconds.
+export async function signTransfer(
+  unsigned: FrameTx,
+  account: Account,
+  keys: SigningKeys,
+  onProgress: (progress: Progress) => void | Promise<void> = () => {},
+): Promise<FrameTx> {
   const digest = hexToBytes(tx.sigHash(PROFILE, unsigned));
+  const entries = signers(unsigned, account);
   const signatures: SignatureEntry[] = [];
-  for (let i = 0; i < unsigned.signatures.length; i++) {
-    const scheme: Scheme = account.schemes[i]?.scheme ?? "ecdsa"; // past the schemes: the owner's entry
-    signatures.push({ ...unsigned.signatures[i], signature: bytesToHex(await signWith(scheme, keys, digest)) });
+  for (let i = 0; i < entries.length; i++) {
+    await onProgress({ type: "signing", index: i });
+    const started = performance.now();
+    const signature = await signWith(entries[i].scheme, keys, digest);
+    await onProgress({ type: "signed", index: i, ms: performance.now() - started });
+    signatures.push({ ...unsigned.signatures[i], signature: bytesToHex(signature) });
   }
   return { ...unsigned, signatures };
 }
@@ -123,7 +145,12 @@ async function signWith(scheme: Scheme, keys: SigningKeys, digest: Uint8Array): 
   return sphincsSign(keys.sphincs!, digest);
 }
 
-export type Step = "signing" | "sending" | "mining";
+export type Progress =
+  | { type: "signers"; signers: Signer[] } // what is about to be signed, in order
+  | { type: "signing"; index: number }
+  | { type: "signed"; index: number; ms: number }
+  | { type: "sending" }
+  | { type: "mining" };
 
 export interface Sent {
   hash: Hex;
@@ -137,21 +164,21 @@ export async function sendTransfer(
   password: string,
   account: Account,
   transfer: Transfer,
-  onStep: (step: Step) => void = () => {},
+  onProgress: (progress: Progress) => void | Promise<void> = () => {},
 ): Promise<Sent> {
   const network = await loadNetwork();
   const ctx = await transferContext(network, account);
   const needed: Scheme[] = [...account.schemes.map((s) => s.scheme), ...(ctx.deployed ? [] : ["ecdsa" as const])];
 
-  onStep("signing");
   const unsigned = buildTransfer(ctx, transfer, fixedLimits(account, ctx.deployed));
-  const signed = await withSigningKeys(password, needed, (keys) => signTransfer(unsigned, account, keys));
+  await onProgress({ type: "signers", signers: signers(unsigned, account) });
+  const signed = await withSigningKeys(password, needed, (keys) => signTransfer(unsigned, account, keys, onProgress));
 
-  onStep("sending");
+  await onProgress({ type: "sending" });
   const hash = tx.txHash(PROFILE, signed);
   await rpc(network.sidecarUrl, "eth_sendFrameTransaction", [toWire(signed)]);
 
-  onStep("mining");
+  await onProgress({ type: "mining" });
   for (let i = 0; i < 60; i++) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     const receipt = await rpc<Receipt | null>(network.rpcUrl, "eth_getTransactionReceipt", [hash]);
