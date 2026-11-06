@@ -90,6 +90,7 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
   // A raised safeguard's backup signs every transaction, as a scheme does.
   const raised = account && state ? raisedRules(account, state.signals) : [];
   const schemes = [...new Set([...(account?.schemes.map((s) => s.scheme) ?? []), ...raised.map((r) => r.scheme)])];
+  const undeployed = state?.deployed === false;
   const raisedSignals = SIGNALS.filter((s) => (state?.signals[s.address.toLowerCase()] ?? 0) > 0);
   return (
     <div className="screen">
@@ -112,7 +113,7 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
       <div className="panel">
         <p className="label">Balance</p>
         <div className="balance">{state ? `${formatEth(state.balance)} ETH` : "—"}</div>
-        {state && !state.deployed && <p className="hint">Not deployed yet: your first transaction deploys it.</p>}
+        {undeployed && <p className="hint">Not deployed yet.</p>}
       </div>
       {notice && <div className="warning">{notice}</div>}
       {error && <p className="error">{error}</p>}
@@ -164,16 +165,22 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
         </button>
       </div>
       <div>
-        <p className="label">Signature schemes</p>
+        <p className="label">Signature schemes{undeployed && ", from your first transaction"}</p>
         <div className="chips">
           {SCHEMES.map((s) => (
             <SchemeChip key={s} scheme={s} off={!schemes.includes(s)} />
           ))}
         </div>
       </div>
-      <p className="hint">
-        {schemes.length} of {SCHEMES.length} schemes protect this account
-      </p>
+      {/* Before deployment nothing enforces the schemes yet: only a transaction signed by the owner key can deploy the
+          wallet, and the key's public key isn't on chain until it signs. */}
+      {state && (
+        <p className="hint">
+          {!undeployed
+            ? `${schemes.length} of ${SCHEMES.length} schemes protect this account`
+            : "Until then, this address is guarded by your owner key. Its public key stays hidden until your first transaction."}
+        </p>
+      )}
       <Activity history={history} onOpen={onOpenTransaction} />
       <button className="btn btn-secondary spacer" onClick={onSchemes}>
         Change schemes
