@@ -48,3 +48,14 @@
   display: block;
   color: var(--muted);
 }
+
+.account-menu-rename {
+  display: flex;
+  gap: 6px;
+  padding: 4px 8px 8px;
+}
+
+.account-menu-rename .btn {
+  flex: none;
+  padding: 6px 10px;
+}

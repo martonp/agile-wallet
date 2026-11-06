@@ -42,6 +42,7 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onSchem
       if (!current) return;
       const refresh = async () => {
         try {
+          current = (await loadAccount(index)) ?? current; // picks up a rename, here or in another popup
           let next = await accountState(network, current!);
           // A scheme change can land while the screen is open, after the popup that sent it closed.
           if (!next.schemesMatch) {
@@ -87,7 +88,7 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onSchem
   const schemes = account?.schemes.map((s) => s.scheme) ?? [];
   return (
     <div className="screen">
-      <Header title={account ? <AccountMenu current={account} onSelect={onSelect} onAdd={onAddAccount} /> : ""}>
+      <Header title={account ? <AccountMenu current={account} onSelect={onSelect} onAdd={onAddAccount} onRenamed={() => loadAccount(index).then(setAccount)} /> : ""}>
         <span className="row">
           <button className="icon-button" onClick={onSettings} aria-label="Network settings">
             <IconSettings size={18} />

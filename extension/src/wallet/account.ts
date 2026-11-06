@@ -80,6 +80,13 @@ export async function loadAccount(index = 0): Promise<Account | undefined> {
   return stored && { index, ...stored, name: stored.name ?? `Account ${index + 1}` };
 }
 
+// Names are the extension's own: they aren't on chain, so a restored account starts as "Account N".
+export async function renameAccount(index: number, name: string): Promise<void> {
+  const account = await loadAccount(index);
+  if (!account) throw new Error("No such account");
+  await saveAccount({ ...account, name: name.trim() || `Account ${index + 1}` });
+}
+
 export async function accountCount(): Promise<number> {
   const count = (await chrome.storage.local.get(COUNT_KEY))[COUNT_KEY] as number | undefined;
   return count ?? ((await loadAccount(0)) ? 1 : 0); // a wallet from before multiple accounts has one

@@ -5,6 +5,7 @@ import {
   accountState,
   listAccounts,
   recoverSchemes,
+  renameAccount,
   selectAccount,
   selectedAccount,
   deriveAccount,
@@ -169,4 +170,12 @@ test("an account whose wallet is on chain says its schemes were restored; the fl
   expect(restored).toMatchObject({ schemes: ecdsaOnly, restored: true });
   await saveAccount(restored);
   expect(await loadAccount(0)).not.toHaveProperty("restored");
+});
+
+test("renames an account, keeping everything else", async () => {
+  await saveAccount(record(1, [ecdsa]));
+  await renameAccount(1, "  Savings ");
+  expect(await loadAccount(1)).toEqual({ ...record(1, [ecdsa]), name: "Savings" });
+  await renameAccount(1, "");
+  expect((await loadAccount(1))!.name).toBe("Account 2");
 });
