@@ -7,6 +7,8 @@ export default defineConfig({
   plugins: [react()],
   // zknox-falcon is a linked CommonJS package; linked packages are not pre-bundled unless listed.
   optimizeDeps: { include: ["zknox-falcon"] },
+  // The signer worker imports modules (and WASM), so it is built as an ES module worker.
+  worker: { format: "es" },
   build: {
     outDir: "dist",
     emptyOutDir: true,

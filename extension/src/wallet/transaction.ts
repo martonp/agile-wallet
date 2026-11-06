@@ -5,13 +5,11 @@ import type { FrameTx, SignatureEntry } from "@forshtat/hegota-support/tx";
 import { type Address, type Hex, bytesToHex, encodeFunctionData, hexToBytes, zeroAddress } from "viem";
 import { type Account, accountState, clearPendingSchemes, formatEth, publicKeyOf, saveAccount, savePendingSchemes } from "./account";
 import type { SigningKeys } from "./derive";
-import { ecdsaSign } from "./ecdsa";
-import { falconSign } from "./falcon";
 import { withSigningKeys } from "./keyring";
 import { CONTRACTS, type Network, VERIFIERS, loadNetwork } from "./network";
 import { rpc } from "./rpc";
+import { signOffThread } from "./signer";
 import { SCHEMES, type Scheme } from "./schemes";
-import { sphincsSign } from "./sphincs";
 
 // The EIP-8141 encoding of the devnet's ethrex build, which the VPR sidecar also speaks.
 const PROFILE = getProfile("ethrex-eip8141-tracer");
@@ -158,8 +156,7 @@ export interface Signer {
   owner: boolean; // the owner's entry that authorises deployment, when ECDSA isn't one of the schemes
 }
 
-// Signs every entry over the canonical sig hash. `onProgress` hears of each signature before and after it; awaiting
-// it lets the popup paint "signing" before a signer blocks the thread for seconds.
+// Signs every entry over the canonical sig hash. `onProgress` hears of each signature before and after it.
 export async function signTransaction(
   unsigned: FrameTx,
   required: Account["schemes"],
@@ -179,10 +176,8 @@ export async function signTransaction(
   return { ...unsigned, signatures };
 }
 
-async function signWith(scheme: Scheme, keys: SigningKeys, digest: Uint8Array): Promise<Uint8Array> {
-  if (scheme === "ecdsa") return ecdsaSign(keys.ecdsa!, digest);
-  if (scheme === "falcon") return falconSign(keys.falcon!, digest);
-  return sphincsSign(keys.sphincs!, digest);
+function signWith(scheme: Scheme, keys: SigningKeys, digest: Uint8Array): Promise<Uint8Array> {
+  return signOffThread(scheme, keys[scheme]!, digest);
 }
 
 export type Progress =

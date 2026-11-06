@@ -8,8 +8,6 @@ import { loadNetwork } from "../../wallet/network";
 import { type Progress, changeSchemes } from "../../wallet/transaction";
 import { WrongPasswordError } from "../../wallet/vault";
 
-// Resolves once the browser has painted: a signer then blocks the thread only after its "signing…" is on screen.
-const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 
 export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => void }) {
   const [account, setAccount] = useState<Account>();
@@ -39,8 +37,7 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
       case "signers":
         return setTracker({ signers: progress.signers, ms: [], current: -1, phase: "signing" });
       case "signing":
-        setTracker((t) => t && { ...t, current: progress.index });
-        return nextPaint();
+        return setTracker((t) => t && { ...t, current: progress.index });
       case "signed":
         return setTracker((t) => t && { ...t, ms: Object.assign([...t.ms], { [progress.index]: progress.ms }) });
       case "sending":
