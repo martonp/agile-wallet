@@ -4,9 +4,11 @@ import { type Safeguards, SchemeChoices, choicesChanged, ruleChoices, safeguards
 import { SendProgress, type Tracker } from "../components/SendProgress";
 import { SCHEMES, SCHEME_INFO, type Scheme } from "../schemes";
 import { type Account, type SignalStates, accountState, formatEth, loadAccount, raisedRules, syncAccount } from "../../wallet/account";
-import { loadNetwork } from "../../wallet/network";
+import { SIGNALS, loadNetwork } from "../../wallet/network";
 import { type Progress, changeSchemes, changeSchemesBeforeDeployment, deployFee, deployWallet } from "../../wallet/transaction";
 import { explain } from "../../wallet/errors";
+
+const signalLabel = (address: string) => SIGNALS.find((s) => s.address.toLowerCase() === address.toLowerCase())?.label ?? address;
 
 // A deployed wallet's schemes and safeguards change with a transaction. Before deployment this is the wallet's
 // setup: the choice is saved for the first transaction, or the wallet is deployed with it right away.
@@ -101,9 +103,11 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
       if (!sent.ok) return setError("The change was mined but failed, so the schemes and safeguards stay as they were.");
       show(await loadAccount(index));
       setDone(
-        rulesChanged && !schemesChanged
-          ? "Saved. The safeguard applies from now on."
-          : `Every transaction now needs ${next.length === 1 ? "this signature" : "these signatures"}.`,
+        !rulesChanged || schemesChanged
+          ? `Every transaction now needs ${next.length === 1 ? "this signature" : "these signatures"}.`
+          : rules.length === 0
+            ? "Saved. The safeguard is off."
+            : `Saved. ${rules.map((r) => `Once "${signalLabel(r.signal)}" is signalled, ${SCHEME_INFO[r.scheme].label} will also be required.`).join(" ")}`,
       );
     });
 
