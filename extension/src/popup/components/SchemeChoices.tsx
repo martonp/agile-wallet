@@ -40,7 +40,7 @@ export function SchemeChoices({
   onSafeguards,
   signals,
   deployed,
-  disabled,
+  disabled = false,
 }: {
   account: Account | undefined; // what's saved, for defaults and status
   schemes: Scheme[];
@@ -49,7 +49,7 @@ export function SchemeChoices({
   onSafeguards: (safeguards: Safeguards) => void;
   signals: SignalStates;
   deployed: boolean | undefined;
-  disabled: boolean;
+  disabled?: boolean;
 }) {
   const saved = safeguardsOf(account);
   const toggle = (s: Scheme) => onSchemes(schemes.includes(s) ? schemes.filter((x) => x !== s) : [...schemes, s]);
