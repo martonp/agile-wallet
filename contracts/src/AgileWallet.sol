@@ -5,22 +5,33 @@ import {HegotaSupport} from "hegota-support/HegotaSupport.sol";
 import {Devnet} from "hegota-support/Devnet.sol";
 import {Scope, TxParam, FrameParam, FrameMode, SigParam} from "hegota-support/Params.sol";
 import {IVerifier} from "./IVerifier.sol";
+import {BreakSignal} from "./BreakSignal.sol";
 
 /// An EIP-8141 account that needs a valid signature for every scheme in its list. A scheme is any IVerifier
 /// together with one public key, so new signature schemes need no change here, or native ECDSA: verifier
 /// address(0) and a 20-byte address, signed with a protocol SECP256K1 entry. The wallet stores only the hash
 /// of its list; every transaction carries the list itself.
 ///
+/// The wallet can also subscribe to break signals: a rule says that once its signal is raised (say, "quantum
+/// computers break ECDSA"), its backup scheme must sign too. It stores the hash of its rules the same way.
+///
 /// Deployed once as the implementation; every user gets an ERC-1167 proxy from AgileWalletFactory.
 ///
 /// A transaction from the wallet:
-///   frames:     [deploy (first tx only)], VERIFY → validate(schemes), SENDER frames (transfers, setSchemes)
+///   frames:     [deploy (first tx only)], VERIFY → validate(schemes, rules), SENDER frames (transfers, setSchemes,
+///               setRules)
 ///   signatures: one entry per required scheme, in order, each over the canonical sig hash: SECP256K1 for
 ///               native ECDSA, ARBITRARY for the others
 contract AgileWallet is HegotaSupport(Devnet.ERC8421_WORKSHOP) {
     struct Scheme {
         IVerifier verifier;
         bytes publicKey;
+    }
+
+    /// Once `signal` is raised, `scheme` must also sign.
+    struct Rule {
+        BreakSignal signal;
+        Scheme scheme;
     }
 
     uint256 private constant ARBITRARY = 0;
@@ -31,7 +42,11 @@ contract AgileWallet is HegotaSupport(Devnet.ERC8421_WORKSHOP) {
     /// keccak256(abi.encode(schemes)) of the wallet's schemes.
     bytes32 public schemesHash;
 
+    /// keccak256(abi.encode(rules)) of the wallet's rules, or 0 when it has none.
+    bytes32 public rulesHash;
+
     event SchemesChanged(Scheme[] schemes);
+    event RulesChanged(Rule[] rules);
 
     constructor(address factory_) {
         factory = factory_;
@@ -48,12 +63,15 @@ contract AgileWallet is HegotaSupport(Devnet.ERC8421_WORKSHOP) {
         _setSchemes(initial);
     }
 
-    /// The VERIFY frame. `current` must be the wallet's schemes. The required schemes are `current`, then the ones
-    /// a setSchemes call in this transaction adds; signature i is for required scheme i. Approves execution and
-    /// payment when all of them signed.
-    function validate(Scheme[] calldata current) external {
+    /// The VERIFY frame. `current` and `rules` must be the wallet's. The required schemes are `current`, then the
+    /// backups of rules whose signal is raised, then the ones setSchemes and setRules calls in this transaction
+    /// add, in frame order; signature i is for required scheme i. Approves execution and payment when all of them
+    /// signed.
+    function validate(Scheme[] calldata current, Rule[] calldata rules) external {
         require(keccak256(abi.encode(current)) == schemesHash, "wrong schemes");
-        Scheme[] memory required = _withRequested(current);
+        require(_hashRules(rules) == rulesHash, "wrong rules");
+        Scheme[] memory required = _withRequested(_withRaised(current, rules));
+        require(txparam(TxParam.SIGNATURE_COUNT) >= required.length, "missing signature");
         bytes32 sigHash = bytes32(txparam(TxParam.SIG_HASH));
 
         for (uint256 i; i < required.length; i++) {
@@ -73,6 +91,21 @@ contract AgileWallet is HegotaSupport(Devnet.ERC8421_WORKSHOP) {
     function setSchemes(Scheme[] calldata newSchemes) external {
         require(msg.sender == address(this), "only the wallet");
         _setSchemes(newSchemes);
+    }
+
+    /// Replaces the wallet's rules. Only the wallet itself can call it, like setSchemes. Its VERIFY frame has then
+    /// required the backups of the raised rules (so a holder of a broken key alone can't drop them) and the backup
+    /// of every rule in the new list (so a wrong backup key can't lock the wallet once its signal is raised).
+    ///
+    /// Validation calls each signal, so a signal must answer, and mempools must list it: a signal they don't list
+    /// would get every later transaction rejected.
+    function setRules(Rule[] calldata newRules) external {
+        require(msg.sender == address(this), "only the wallet");
+        for (uint256 i; i < newRules.length; i++) {
+            newRules[i].signal.broken(); // reverts if it can't answer
+        }
+        rulesHash = _hashRules(newRules);
+        emit RulesChanged(newRules);
     }
 
     function _setSchemes(Scheme[] calldata newSchemes) private {
@@ -103,7 +136,25 @@ contract AgileWallet is HegotaSupport(Devnet.ERC8421_WORKSHOP) {
         return sigparam(i, SigParam.RESOLVED_SIGNER) == uint160(bytes20(signer));
     }
 
-    /// `current` plus every scheme this transaction's setSchemes calls on this wallet add.
+    function _hashRules(Rule[] calldata rules) private pure returns (bytes32) {
+        return rules.length == 0 ? bytes32(0) : keccak256(abi.encode(rules));
+    }
+
+    /// `current` plus the backups of the rules whose signal is raised.
+    function _withRaised(Scheme[] calldata current, Rule[] calldata rules) private view returns (Scheme[] memory) {
+        Scheme[] memory backups = new Scheme[](rules.length);
+        uint256 n;
+        for (uint256 i; i < rules.length; i++) {
+            if (rules[i].signal.broken()) backups[n++] = rules[i].scheme;
+        }
+        assembly ("memory-safe") {
+            mstore(backups, n)
+        }
+        return _union(current, backups);
+    }
+
+    /// `current` plus every scheme this transaction's setSchemes and setRules calls on this wallet add, in frame
+    /// order.
     function _withRequested(Scheme[] memory current) private view returns (Scheme[] memory required) {
         required = current;
         uint256 frameCount = txparam(TxParam.FRAME_COUNT);
@@ -111,9 +162,20 @@ contract AgileWallet is HegotaSupport(Devnet.ERC8421_WORKSHOP) {
             if (frameparam(i, FrameParam.MODE) != uint256(FrameMode.SENDER)) continue;
             if (frameparam(i, FrameParam.RESOLVED_TARGET) != uint160(address(this))) continue;
             uint256 length = frameparam(i, FrameParam.DATA_LENGTH);
-            if (length < 4 || bytes4(framedataload(0, i)) != this.setSchemes.selector) continue;
-            Scheme[] memory added = abi.decode(framedatacopy(4, length - 4, i), (Scheme[]));
-            required = _union(required, added);
+            if (length < 4) continue;
+            bytes4 selector = bytes4(framedataload(0, i));
+            if (selector == this.setSchemes.selector) {
+                required = _union(required, abi.decode(framedatacopy(4, length - 4, i), (Scheme[])));
+            } else if (selector == this.setRules.selector) {
+                required = _union(required, _backups(abi.decode(framedatacopy(4, length - 4, i), (Rule[]))));
+            }
+        }
+    }
+
+    function _backups(Rule[] memory rules) private pure returns (Scheme[] memory backups) {
+        backups = new Scheme[](rules.length);
+        for (uint256 i; i < rules.length; i++) {
+            backups[i] = rules[i].scheme;
         }
     }
 
