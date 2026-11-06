@@ -36,7 +36,8 @@ One Falcon or SPHINCS- verification uses that up on its own, while a native prec
 few thousand (EIP-8052 prices Falcon at 3,000). VPR is the canonical mempool with one change: calls
 to listed verifier functions count at their precompile price instead of their EVM cost. The extra
 allowance belongs to the verification code, which is the same for every sender, so nobody needs to
-stake. The spec is [`docs/VPR.md`](docs/VPR.md).
+stake. The spec is [`docs/VPR.md`](docs/VPR.md), and its IPFS CIDv0 is the mempool's ID and gossip
+topic: `QmRD2duBXp1tfh2RXo1accZbk1VE61q9ppYkAtNjpf81cd` (`python3 scripts/mempool-id.py docs/VPR.md`).
 
 The rule runs in our fork of the alt-mempool sidecar (`sidecar/`). It needs ethrex to report the gas
 of each call in its trace ([martonp/ethrex](https://github.com/martonp/ethrex), branch
@@ -49,7 +50,7 @@ of each call in its trace ([martonp/ethrex](https://github.com/martonp/ethrex), 
 | `contracts/` | Foundry: verifiers, `AgileWallet`, factory, deploy script |
 | `extension/` | Chrome MV3 extension (React, Vite); see its README |
 | `sidecar/` | Alt-mempool sidecar fork with the VPR rule |
-| `scripts/` | Devnet scripts: verifier gas measurement, end-to-end transaction |
+| `scripts/` | Devnet scripts: verifier gas measurement, end-to-end transaction, mempool ID |
 | `docs/VPR.md` | The VPR spec |
 
 ## Running the demo
@@ -64,10 +65,11 @@ Each step starts from the repository root.
 # 2. Contracts (deployed code costs state gas after Amsterdam, hence the multiplier)
 (cd contracts && forge build && forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 \
   --private-key $FUNDED_KEY --broadcast --slow --legacy --gas-estimate-multiplier 900)
-# 3. The VPR sidecar, in its own terminal
-(cd sidecar && bun install && bun run build && ./skandha standalone \
+# 3. The VPR sidecar, in its own terminal; it gossips on the VPR topic
+#    (another VPR node joins with --p2p.bootEnrs <the ENR this one logs>)
+(cd sidecar && bun install && bun run build && ./skandha node \
   --configFile ../scripts/vpr-sidecar.config.json --api.port 14338 --api.wsPort 14338 \
-  --redirectRpc --executor.bundlingMode auto)
+  --p2p.port 4338 --p2p.enrPort 4338 --redirectRpc --executor.bundlingMode auto)
 # 4. A wallet transaction through it
 (cd scripts && npm install && FUNDER_KEY=$FUNDED_KEY SCHEMES=sphincs node send-wallet-tx.mjs)
 ```
@@ -75,7 +77,8 @@ Each step starts from the repository root.
 ## Status
 
 - On a local devnet, a SPHINCS- wallet's first transaction (deploy and transfer) and a second
-  transfer were admitted through VPR and mined. The canonical mempool would reject both.
+  transfer were admitted through VPR and mined. The canonical mempool would reject both. With two
+  VPR nodes peered, a transaction sent to one was gossiped on the VPR topic to the other.
 - Wallets with Falcon don't fit yet: work outside the verifiers (deployment, the wallet's own
   checks) must stay under 100,000 gas, and with Falcon's 1 KB key it comes to about 111,000.
 - The extension creates, stores and unlocks the wallet and signs with ECDSA and Falcon; it does
