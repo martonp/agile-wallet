@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { IconCheck, IconCopy, IconLock, IconSettings } from "@tabler/icons-react";
 import { SchemeChip } from "../components/SchemeChip";
 import { AccountMenu } from "../components/AccountMenu";
+import { Activity } from "../components/Activity";
 import { Header } from "../components/Header";
 import { shortAddress } from "../format";
 import { SCHEMES } from "../schemes";
 import { type Account as AccountData, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
+import { type HistoryEntry, syncHistory } from "../../wallet/history";
 import { loadNetwork } from "../../wallet/network";
 
 type Props = {
@@ -24,6 +26,7 @@ export function Account({ index, onSelect, onAddAccount, onSend, onSchemes, onSe
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const [uncopied, setUncopied] = useState(""); // the address, when the browser refused the clipboard
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
 
   // Re-reads the address, balance and deployment every 2 seconds while the screen is open; each read waits for the
   // previous one, so a slow node never stacks requests.
@@ -47,9 +50,12 @@ export function Account({ index, onSelect, onAddAccount, onSend, onSchemes, onSe
               next = await accountState(network, current);
             }
           }
+          // Sends whose popup closed before they were mined are settled here too.
+          const activity = await syncHistory(network, index);
           if (stopped) return;
           setAccount(current);
           setState(next);
+          setHistory(activity);
           setError("");
         } catch {
           if (stopped) return;
@@ -129,6 +135,7 @@ export function Account({ index, onSelect, onAddAccount, onSend, onSchemes, onSe
       <p className="hint">
         {schemes.length} of {SCHEMES.length} schemes protect this account
       </p>
+      <Activity history={history} />
       <button className="btn btn-secondary spacer" onClick={onSchemes}>
         Change schemes
       </button>

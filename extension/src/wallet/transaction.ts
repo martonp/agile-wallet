@@ -7,6 +7,7 @@ import { type Account, accountState, clearPendingSchemes, formatEth, publicKeyOf
 import type { SigningKeys } from "./derive";
 import { withSigningKeys } from "./keyring";
 import { CONTRACTS, type Network, VERIFIERS, loadNetwork } from "./network";
+import { type Receipt, addEntry, receiptOk, settleEntry } from "./history";
 import { rpc } from "./rpc";
 import { signOffThread } from "./signer";
 import { SCHEMES, type Scheme } from "./schemes";
@@ -243,6 +244,16 @@ async function submit(
   // ECDSA always: it is also the check that these keys are this account's.
   const needed = [...new Set<Scheme>(["ecdsa", ...account.schemes.map((s) => s.scheme), ...extraKeys])];
 
+  // What the history records: the action, and each signature's scheme and time.
+  let action: Action | undefined;
+  const signatures: { scheme: Scheme; ms: number }[] = [];
+  let entries: Signer[] = [];
+  const record: OnProgress = (progress) => {
+    if (progress.type === "signers") entries = progress.signers;
+    if (progress.type === "signed") signatures[progress.index] = { scheme: entries[progress.index].scheme, ms: progress.ms };
+    return onProgress(progress);
+  };
+
   const signed = await withSigningKeys(
     password,
     needed,
@@ -250,7 +261,7 @@ async function submit(
       if ((await publicKeyOf("ecdsa", keys)).toLowerCase() !== account.owner.toLowerCase()) {
         throw new Error("These keys aren't this account's: its owner doesn't match");
       }
-      const action = await plan(keys);
+      action = await plan(keys);
       // Checked before signing: the mempool would refuse it after seconds of signing, with a message in wei.
       const needs = (action.type === "transfer" ? action.value : 0n) + maxFee(ctx, action);
       if (needs > ctx.balance) {
@@ -258,8 +269,8 @@ async function submit(
       }
       const required = requiredSchemes(account, action);
       const unsigned = buildTransaction(ctx, action, fixedLimits(account, ctx.deployed, action));
-      await onProgress({ type: "signers", signers: signers(unsigned, required) });
-      return signTransaction(unsigned, required, keys, onProgress);
+      await record({ type: "signers", signers: signers(unsigned, required) });
+      return signTransaction(unsigned, required, keys, record);
     },
     account.index,
   );
@@ -267,23 +278,30 @@ async function submit(
   await onProgress({ type: "sending" });
   const hash = tx.txHash(PROFILE, signed);
   await rpc(network.sidecarUrl, "eth_sendFrameTransaction", [toWire(signed)]);
+  const done = action!;
+  await addEntry(account.index, {
+    hash,
+    time: Date.now(),
+    kind: done.type,
+    ...(done.type === "transfer"
+      ? { to: done.to, value: done.value.toString() }
+      : { schemes: done.schemes.map((s) => s.scheme) }),
+    deploys: !ctx.deployed,
+    signatures,
+    status: "pending",
+  });
 
   await onProgress({ type: "mining" });
   for (let i = 0; i < 60; i++) {
     await new Promise((resolve) => setTimeout(resolve, 2000));
     const receipt = await rpc<Receipt | null>(network.rpcUrl, "eth_getTransactionReceipt", [hash]);
     if (receipt) {
-      const ok = receipt.frameReceipts ? receipt.frameReceipts.every((f) => f.status === "0x1") : receipt.status === "0x1";
+      const ok = receiptOk(receipt);
+      await settleEntry(account.index, hash, ok, Number(BigInt(receipt.blockNumber)));
       return { hash, block: BigInt(receipt.blockNumber), ok };
     }
   }
   throw new Error(`Not mined within 2 minutes (${hash})`);
-}
-
-interface Receipt {
-  status?: Hex;
-  blockNumber: Hex;
-  frameReceipts?: { status: Hex }[];
 }
 
 // A fixed tip, as the devnet scripts pay. Following the node's suggested price instead feeds back on a quiet chain:
