@@ -7,7 +7,7 @@ import { expect, test } from "vitest";
 import { deriveAccount } from "./account";
 import { deriveSigningKeys } from "./derive";
 import { CONTRACTS } from "./network";
-import { type TransferContext, buildTransfer, limitsFrom, signTransfer } from "./transaction";
+import { type TransferContext, buildTransfer, fixedLimits, signTransfer } from "./transaction";
 
 const PROFILE = getProfile("ethrex-eip8141-tracer");
 const seed = new Uint8Array(64).fill(5);
@@ -40,11 +40,21 @@ test("without an ECDSA scheme, the first transaction adds the owner's entry; lat
   expect(later.signatures).toHaveLength(1);
 });
 
-test("limits add a margin, and 60k more for Falcon's VERIFY", async () => {
-  const plain = (await context(["sphincs"], false)).account;
-  const falcon = (await context(["falcon"], false)).account;
-  expect(limitsFrom([50_000n, 100_000n], false, plain)).toEqual({ deploy: 53_000n, verify: 104_000n });
-  expect(limitsFrom([100_000n], true, falcon)).toEqual({ deploy: 0n, verify: 164_000n });
+test("fixed limits are well above what the devnet measured, and an ECDSA-only wallet fits without credit", async () => {
+  // Measured on the local devnet: the lowest limits that simulate on a first transaction, and the gas used once deployed.
+  const es = (await context(["ecdsa", "sphincs"], false)).account;
+  expect(fixedLimits(es, false).deploy).toBeGreaterThan(51_630n + 5_000n);
+  expect(fixedLimits(es, false).verify).toBeGreaterThan(133_482n + 20_000n);
+  expect(fixedLimits(es, true)).toEqual({ deploy: 0n, verify: fixedLimits(es, false).verify });
+  expect(fixedLimits(es, true).verify).toBeGreaterThan(141_197n + 20_000n);
+
+  const all = (await context(["ecdsa", "falcon", "sphincs"], false)).account;
+  expect(fixedLimits(all, false).deploy).toBeGreaterThan(65_980n + 10_000n);
+  expect(fixedLimits(all, true).verify).toBeGreaterThan(814_427n + 50_000n); // an expensive Falcon signature, deployed
+
+  // No verifier call, so no VPR credit: the limits plus the SECP256K1 signature cost (2,900) must stay under 100,000.
+  const ecdsa = fixedLimits((await context(["ecdsa"], false)).account, false);
+  expect(ecdsa.deploy + ecdsa.verify + 2_900n).toBeLessThan(100_000n);
 });
 
 test("signs each entry over the sig hash; the ECDSA entry recovers to the owner", { timeout: 60_000 }, async () => {

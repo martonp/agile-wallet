@@ -94,15 +94,16 @@ export function buildTransfer(ctx: TransferContext, transfer: Transfer, limits: 
   });
 }
 
-// The limits to declare after a simulation that used `gasUsed` per frame: the measured gas plus a margin. A Falcon
-// signature can need one more SHAKE block (~48k gas) after re-signing, so Falcon wallets add 60k to VERIFY; the VPR
-// sidecar's Falcon credit absorbs it.
-export function limitsFrom(gasUsed: bigint[], deployed: boolean, account: Account): Limits {
-  const margin = (g: bigint) => g + g / 50n + 2_000n;
-  const falcon = account.schemes.some((s) => s.scheme === "falcon") ? 60_000n : 0n;
-  return deployed
-    ? { deploy: 0n, verify: margin(gasUsed[0]) + falcon }
-    : { deploy: margin(gasUsed[0]), verify: margin(gasUsed[1]) + falcon };
+// Fixed, generous gas limits: well above what the local devnet measured (Falcon at its expensive level, where
+// hash-to-point needs a ninth SHAKE block), so that sends don't fail on gas. The limits count against the VPR
+// mempool's validation budget; the sidecar's stand-in credits for Falcon and SPHINCS- are sized to cover them, and
+// an ECDSA-only wallet, which earns no credit, stays under 100,000.
+const DEPLOY_GAS = { base: 52_000n, ecdsa: 4_000n, sphincs: 6_000n, falcon: 20_000n };
+const VERIFY_GAS = { base: 30_000n, ecdsa: 6_000n, sphincs: 150_000n, falcon: 800_000n };
+
+export function fixedLimits(account: Account, deployed: boolean): Limits {
+  const sum = (table: Record<Scheme | "base", bigint>) => account.schemes.reduce((g, s) => g + table[s.scheme], table.base);
+  return { deploy: deployed ? 0n : sum(DEPLOY_GAS), verify: sum(VERIFY_GAS) };
 }
 
 // Signs every entry over the canonical sig hash: one per scheme, then the owner's if there is one more.
@@ -130,8 +131,8 @@ export interface Sent {
   ok: boolean; // every frame succeeded
 }
 
-// Signs a transfer with the account's keys and sends it through the VPR mempool. Signs twice: once to simulate
-// with generous limits, once more with the measured ones, which are part of the signed hash.
+// Signs a transfer once with the account's keys, at fixed gas limits, and sends it through the VPR mempool, which
+// simulates it before accepting it.
 export async function sendTransfer(
   password: string,
   account: Account,
@@ -143,11 +144,8 @@ export async function sendTransfer(
   const needed: Scheme[] = [...account.schemes.map((s) => s.scheme), ...(ctx.deployed ? [] : ["ecdsa" as const])];
 
   onStep("signing");
-  const signed = await withSigningKeys(password, needed, async (keys) => {
-    const probe = await signTransfer(buildTransfer(ctx, transfer, { deploy: 1_000_000n, verify: 3_000_000n }), account, keys);
-    const gasUsed = await simulate(network, probe);
-    return signTransfer(buildTransfer(ctx, transfer, limitsFrom(gasUsed, ctx.deployed, account)), account, keys);
-  });
+  const unsigned = buildTransfer(ctx, transfer, fixedLimits(account, ctx.deployed));
+  const signed = await withSigningKeys(password, needed, (keys) => signTransfer(unsigned, account, keys));
 
   onStep("sending");
   const hash = tx.txHash(PROFILE, signed);
@@ -188,17 +186,6 @@ async function transferContext(network: Network, account: Account): Promise<Tran
     nonce: BigInt(nonce),
     maxFeePerGas: twice > floor ? twice : floor,
   };
-}
-
-// The gas each frame used, from the node's simulation of the whole transaction.
-async function simulate(network: Network, signed: FrameTx): Promise<bigint[]> {
-  const result = await rpc<{ frames?: { gasUsed: Hex }[]; executionError?: string }>(
-    network.rpcUrl,
-    "ethrex_simulateFrameTransaction",
-    [tx.encodeTx(PROFILE, signed), "latest", { trace: false }],
-  );
-  if (!result.frames) throw new Error(`Simulation failed: ${result.executionError ?? "no result"}`);
-  return result.frames.map((f) => BigInt(f.gasUsed));
 }
 
 function hasEcdsa(account: Account): boolean {

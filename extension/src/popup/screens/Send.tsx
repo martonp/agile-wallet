@@ -9,7 +9,7 @@ import { type Sent, type Step, sendTransfer } from "../../wallet/transaction";
 import { WrongPasswordError } from "../../wallet/vault";
 
 const STEP_TEXT: Record<Step, string> = {
-  signing: "Signing and simulating…",
+  signing: "Signing…",
   sending: "Sending to the VPR mempool…",
   mining: "Waiting for a block…",
 };
