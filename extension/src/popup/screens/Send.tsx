@@ -2,11 +2,13 @@ import { useEffect, useState } from "react";
 import { type Address, formatEther, isAddress, parseEther } from "viem";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
+import { type Safeguards, SchemeChoices, choicesChanged, ruleChoices, safeguardsOf } from "../components/SchemeChoices";
 import { SendProgress, type Tracker } from "../components/SendProgress";
 import { shortAddress } from "../format";
 import { type Account, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
-import { type Progress, type Sent, sendTransfer, transferFee } from "../../wallet/transaction";
+import type { Scheme } from "../schemes";
+import { type Progress, type Sent, changeSchemesBeforeDeployment, sendTransfer, transferFee } from "../../wallet/transaction";
 import { explain } from "../../wallet/errors";
 
 
@@ -21,12 +23,22 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
   const [tracker, setTracker] = useState<Tracker>();
   const [sent, setSent] = useState<Sent>();
   const [error, setError] = useState("");
+  // A first send also deploys the wallet: after the amount, a second step shows what it deploys with.
+  const [step, setStep] = useState<"amount" | "deployment">("amount");
+  const [schemes, setSchemes] = useState<Scheme[]>([]);
+  const [safeguards, setSafeguards] = useState<Safeguards>(safeguardsOf(undefined));
+
+  function show(loaded: Account | undefined) {
+    setAccount(loaded);
+    setSchemes(loaded?.schemes.map((s) => s.scheme) ?? []);
+    setSafeguards(safeguardsOf(loaded));
+  }
 
   useEffect(() => {
     (async () => {
       const network = await loadNetwork();
       const loaded = await syncAccount(network, index).catch(() => loadAccount(index));
-      setAccount(loaded);
+      show(loaded);
       if (!loaded) return;
       setState(await accountState(network, loaded).catch(() => undefined));
       setFee(await transferFee(loaded).then((f) => f.maxFee, () => undefined));
@@ -63,6 +75,18 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
     }
   }
 
+  const undeployed = state?.deployed === false;
+  const changed = choicesChanged(account, schemes, safeguards);
+
+  function next() {
+    const value = check();
+    if (typeof value === "string") return setError(value);
+    setError("");
+    setSent(undefined);
+    setTracker(undefined);
+    setStep("deployment");
+  }
+
   async function signAndSend() {
     const value = check();
     if (typeof value === "string") return setError(value);
@@ -72,20 +96,74 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
     setTracker(undefined);
     setBusy(true);
     try {
-      const result = await sendTransfer(password, account, { to: to as Address, value }, onProgress);
+      // The deployment's choices are saved first, so the first transaction carries them.
+      const from = changed
+        ? await changeSchemesBeforeDeployment(password, account, { schemes, rules: ruleChoices(safeguards) })
+        : account;
+      show(from);
+      const result = await sendTransfer(password, from, { to: to as Address, value }, onProgress);
       setSent(result);
       setTracker((t) => t && { ...t, phase: "done", block: result.block, ok: result.ok });
       setTo("");
       setAmount("");
-      if (state) setState(await accountState(await loadNetwork(), account).catch(() => state));
-      setFee(await transferFee(account).then((f) => f.maxFee, () => fee));
+      setStep("amount");
+      if (state) setState(await accountState(await loadNetwork(), from).catch(() => state));
+      setFee(await transferFee(from).then((f) => f.maxFee, () => fee));
     } catch (e) {
       setTracker((t) => t && { ...t, failed: true });
       setError(explain(e));
+      // The deployment's choices may have been saved before the failure: the fee follows them.
+      const latest = await loadAccount(index);
+      if (latest) setFee(await transferFee(latest).then((f) => f.maxFee, () => fee));
     } finally {
       setPassword("");
       setBusy(false);
     }
+  }
+
+  if (step === "deployment") {
+    return (
+      <div className="screen">
+        <Header title="Send ETH" onBack={() => setStep("amount")} />
+        <p className="hint">
+          Sending {amount} ETH to <span className="mono">{shortAddress(to)}</span>. This first transaction also deploys
+          your wallet: choose the signatures every transaction will need, and the safeguards.
+        </p>
+        <SchemeChoices
+          account={account}
+          schemes={schemes}
+          onSchemes={setSchemes}
+          safeguards={safeguards}
+          onSafeguards={setSafeguards}
+          signals={state?.signals ?? {}}
+          deployed={state?.deployed}
+          disabled={busy}
+        />
+        {tracker ? (
+          <SendProgress tracker={tracker} />
+        ) : schemes.length === 0 ? (
+          <p className="error">Keep at least one scheme.</p>
+        ) : (
+          <div className="row" style={{ justifyContent: "space-between", fontSize: 13 }}>
+            <span style={{ color: "var(--muted)" }}>Network fee</span>
+            <span>{changed ? "worked out when you send" : fee !== undefined ? `up to ${formatEth(fee, 5)} ETH` : "—"}</span>
+          </div>
+        )}
+        <div className="spacer">
+          <p className="label">Password</p>
+          <input className="field" type="password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        {error && <p className="error check-lines">{error}</p>}
+        <div className="row">
+          <button className="btn btn-secondary" disabled={busy} onClick={() => setStep("amount")}>
+            Back
+          </button>
+          <button className="btn btn-primary" disabled={busy || !password || schemes.length === 0} onClick={signAndSend}>
+            {busy ? "Sending…" : "Sign and send"}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -106,19 +184,24 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
         <input className="field" placeholder="0.0" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.trim())} />
         <p className="hint" style={{ marginTop: 4 }}>
           Available: {state ? formatEth(state.balance) : "—"} ETH
-          {state && !state.deployed && " · this transaction also deploys the wallet"}
         </p>
       </div>
       {tracker ? (
         <SendProgress tracker={tracker} />
       ) : (
         <div className="panel">
-          <p className="label">Signed with</p>
-          <div className="chips">
-            {account?.schemes.map((s) => (
-              <SchemeChip key={s.scheme} scheme={s.scheme} />
-            ))}
-          </div>
+          {undeployed ? (
+            <p className="hint">This first transaction also deploys your wallet. Next, choose what it's deployed with.</p>
+          ) : (
+            <>
+              <p className="label">Signed with</p>
+              <div className="chips">
+                {account?.schemes.map((s) => (
+                  <SchemeChip key={s.scheme} scheme={s.scheme} />
+                ))}
+              </div>
+            </>
+          )}
           <div className="row" style={{ justifyContent: "space-between", marginTop: 10, fontSize: 13 }}>
             <span style={{ color: "var(--muted)" }}>Network fee</span>
             <span>{fee !== undefined ? `up to ${formatEth(fee, 5)} ETH` : "—"}</span>
@@ -126,8 +209,12 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
         </div>
       )}
       <div className="spacer">
-        <p className="label">Password</p>
-        <input className="field" type="password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} />
+        {state && !undeployed && (
+          <>
+            <p className="label">Password</p>
+            <input className="field" type="password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} />
+          </>
+        )}
       </div>
       {error && <p className="error check-lines">{error}</p>}
       {sent && (
@@ -135,9 +222,15 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
           {sent.ok ? "Sent" : "Mined, but a frame failed"} in block {sent.block.toString()}: <span className="mono">{shortAddress(sent.hash)}</span>
         </p>
       )}
-      <button className="btn btn-primary" disabled={busy || !password} onClick={signAndSend}>
-        {busy ? "Sending…" : "Sign and send"}
-      </button>
+      {undeployed ? (
+        <button className="btn btn-primary" disabled={busy || !state} onClick={next}>
+          Next
+        </button>
+      ) : (
+        <button className="btn btn-primary" disabled={busy || !password || !state} onClick={signAndSend}>
+          {busy ? "Sending…" : "Sign and send"}
+        </button>
+      )}
     </div>
   );
 }

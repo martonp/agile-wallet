@@ -1,29 +1,24 @@
 import { useEffect, useState } from "react";
-import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
+import { type Safeguards, SchemeChoices, choicesChanged, ruleChoices, safeguardsChanged, safeguardsOf } from "../components/SchemeChoices";
 import { SendProgress, type Tracker } from "../components/SendProgress";
 import { SCHEMES, SCHEME_INFO, type Scheme } from "../schemes";
-import { type Account, type SignalStates, accountState, loadAccount, raisedRules, syncAccount } from "../../wallet/account";
-import { SIGNALS, loadNetwork } from "../../wallet/network";
-import { type Progress, type RuleChoice, changeSchemes, changeSchemesBeforeDeployment } from "../../wallet/transaction";
+import { type Account, type SignalStates, accountState, formatEth, loadAccount, raisedRules, syncAccount } from "../../wallet/account";
+import { loadNetwork } from "../../wallet/network";
+import { type Progress, changeSchemes, changeSchemesBeforeDeployment, deployFee, deployWallet } from "../../wallet/transaction";
 import { explain } from "../../wallet/errors";
 
-// Each known signal's chosen backup scheme, or null when its safeguard is off, by lowercase signal address.
-type Safeguards = Record<string, Scheme | null>;
-
-const safeguardsOf = (account: Account | undefined): Safeguards =>
-  Object.fromEntries(
-    SIGNALS.map((s) => [s.address.toLowerCase(), account?.rules?.find((r) => r.signal.toLowerCase() === s.address.toLowerCase())?.scheme ?? null]),
-  );
-
+// A deployed wallet's schemes and safeguards change with a transaction. Before deployment this is the wallet's
+// setup: the choice is saved for the first transaction, or the wallet is deployed with it right away.
 export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => void }) {
   const [account, setAccount] = useState<Account>();
-  const [deployed, setDeployed] = useState<boolean>(); // undefined until known; before deployment, no transaction
+  const [deployed, setDeployed] = useState<boolean>(); // undefined until known
   const [signals, setSignals] = useState<SignalStates>({});
   const [next, setNext] = useState<Scheme[]>([]);
   const [nextSafeguards, setNextSafeguards] = useState<Safeguards>(safeguardsOf(undefined));
+  const [funds, setFunds] = useState<{ maxFee: bigint; balance: bigint }>(); // before deployment: the deploy fee
   const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<"" | "save" | "deploy" | "apply">(""); // what's running
   const [tracker, setTracker] = useState<Tracker>();
   const [done, setDone] = useState("");
   const [error, setError] = useState("");
@@ -34,41 +29,36 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
     setNextSafeguards(safeguardsOf(loaded));
   }
 
+  async function refresh(loaded: Account) {
+    const state = await accountState(await loadNetwork(), loaded).catch(() => undefined);
+    setDeployed(state?.deployed);
+    setSignals(state?.signals ?? {});
+    if (state && !state.deployed) setFunds(await deployFee(loaded).catch(() => undefined));
+  }
+
   useEffect(() => {
     (async () => {
-      const network = await loadNetwork();
-      const loaded = await syncAccount(network, index).catch(() => loadAccount(index));
+      const loaded = await syncAccount(await loadNetwork(), index).catch(() => loadAccount(index));
       show(loaded);
-      if (!loaded) return;
-      const state = await accountState(network, loaded).catch(() => undefined);
-      setDeployed(state?.deployed);
-      setSignals(state?.signals ?? {});
+      if (loaded) await refresh(loaded);
     })();
   }, []);
 
   const current = account?.schemes.map((s) => s.scheme) ?? [];
-  const toggle = (s: Scheme) => setNext((n) => (n.includes(s) ? n.filter((x) => x !== s) : [...n, s]));
   const schemesChanged = SCHEMES.some((s) => current.includes(s) !== next.includes(s));
-  const safeguards = safeguardsOf(account);
-  const safeguardsChanged = SIGNALS.some((s) => safeguards[s.address.toLowerCase()] !== nextSafeguards[s.address.toLowerCase()]);
-  const changed = schemesChanged || safeguardsChanged;
-  const rules: RuleChoice[] = SIGNALS.flatMap((s) => {
-    const backup = nextSafeguards[s.address.toLowerCase()];
-    return backup ? [{ signal: s.address, scheme: backup }] : [];
-  });
-  // The change needs signatures from every scheme on before or after it, from the backups of raised safeguards,
-  // and from the backup of every safeguard set by it.
+  const changed = choicesChanged(account, next, nextSafeguards);
+  const rulesChanged = safeguardsChanged(account, nextSafeguards);
+  const rules = ruleChoices(nextSafeguards);
+  // A change needs signatures from every scheme on before or after it, from the backups of raised safeguards, and
+  // from the backup of every safeguard set by it.
   const raised = account ? raisedRules(account, signals).map((r) => r.scheme) : [];
   const signers = SCHEMES.filter(
-    (s) =>
-      current.includes(s) ||
-      raised.includes(s) ||
-      (schemesChanged && next.includes(s)) ||
-      (safeguardsChanged && rules.some((r) => r.scheme === s)),
+    (s) => current.includes(s) || raised.includes(s) || (schemesChanged && next.includes(s)) || (rulesChanged && rules.some((r) => r.scheme === s)),
   );
-  // Before deployment only an added scheme needs the password, to derive its public key.
-  const adding = next.some((s) => !current.includes(s));
-  const needsPassword = deployed !== false || adding;
+  // Before deployment, saving needs the password only to derive a new key; deploying always needs it.
+  const known = [...current, ...(account?.rules ?? []).map((r) => r.scheme)];
+  const adding = [...next, ...rules.map((r) => r.scheme)].some((s) => !known.includes(s));
+  const canDeploy = funds !== undefined && funds.balance >= funds.maxFee;
 
   async function onProgress(progress: Progress) {
     switch (progress.type) {
@@ -84,125 +74,97 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
     }
   }
 
-  async function apply() {
-    if (!account) return;
+  // Runs `work` with the busy state, the progress and the error shown, and the password cleared after.
+  async function run(kind: "save" | "deploy" | "apply", work: () => Promise<void>) {
     setError("");
     setDone("");
     setTracker(undefined);
-    setBusy(true);
-    if (deployed === false) return saveBeforeDeployment(account);
+    setBusy(kind);
     try {
-      const sent = await changeSchemes(password, account, { schemes: next, rules }, onProgress);
-      setTracker((t) => t && { ...t, phase: "done", block: sent.block, ok: sent.ok });
-      if (sent.ok) {
-        show(await loadAccount(index));
-        setDone(
-          safeguardsChanged && !schemesChanged
-            ? "Saved. The safeguard applies from now on."
-            : `Every transaction now needs ${next.length === 1 ? "this signature" : "these signatures"}.`,
-        );
-      } else {
-        setError("The change was mined but failed, so the schemes and safeguards stay as they were.");
-      }
+      await work();
     } catch (e) {
       setTracker((t) => t && { ...t, failed: true });
       setError(explain(e));
+      // The choice may have been saved before the failure, or the wallet deployed from elsewhere meanwhile.
+      const latest = await loadAccount(index);
+      if (latest && deployed === false) await refresh(latest);
     } finally {
       setPassword("");
-      setBusy(false);
+      setBusy("");
     }
   }
 
-  async function saveBeforeDeployment(account: Account) {
-    try {
-      const updated = await changeSchemesBeforeDeployment(password, account, { schemes: next, rules });
-      show(updated);
-      setDone("Saved. Your first transaction deploys the wallet with these schemes.");
-    } catch (e) {
-      setError(explain(e));
-      // Deployed from elsewhere meanwhile: from now on, a change takes a transaction.
-      setDeployed(await accountState(await loadNetwork(), account).then((s) => s.deployed, () => deployed));
-    } finally {
-      setPassword("");
-      setBusy(false);
-    }
+  const apply = () =>
+    run("apply", async () => {
+      const sent = await changeSchemes(password, account!, { schemes: next, rules }, onProgress);
+      setTracker((t) => t && { ...t, phase: "done", block: sent.block, ok: sent.ok });
+      if (!sent.ok) return setError("The change was mined but failed, so the schemes and safeguards stay as they were.");
+      show(await loadAccount(index));
+      setDone(
+        rulesChanged && !schemesChanged
+          ? "Saved. The safeguard applies from now on."
+          : `Every transaction now needs ${next.length === 1 ? "this signature" : "these signatures"}.`,
+      );
+    });
+
+  // Before deployment: keeps the choice for the first transaction. Returns the account as saved.
+  async function saveChoice(): Promise<Account> {
+    const updated = changed ? await changeSchemesBeforeDeployment(password, account!, { schemes: next, rules }) : account!;
+    show(updated);
+    setFunds(await deployFee(updated).catch(() => undefined));
+    return updated;
   }
 
+  const save = () =>
+    run("save", async () => {
+      await saveChoice();
+      setDone("Saved. Your first transaction deploys the wallet with these.");
+    });
+
+  const deploy = () =>
+    run("deploy", async () => {
+      const sent = await deployWallet(password, await saveChoice(), onProgress);
+      setTracker((t) => t && { ...t, phase: "done", block: sent.block, ok: sent.ok });
+      // Deployed either way: the screen becomes Change Schemes.
+      const loaded = await loadAccount(index);
+      show(loaded);
+      if (loaded) await refresh(loaded);
+      if (!sent.ok) return setError("The wallet was deployed, but setting its safeguards failed.");
+      setDone(`Deployed in block ${sent.block}.`);
+    });
+
+  const setup = deployed === false;
+  const funded = funds !== undefined && funds.balance > 0n;
   return (
     <div className="screen">
-      <Header title="Change schemes" onBack={onBack} />
-      <p className="hint">Choose which signatures every transaction needs.</p>
-      <div>
-        {SCHEMES.map((s) => (
-          <label key={s} className="toggle-row">
-            <SchemeChip scheme={s} />
-            <input type="checkbox" className="switch" checked={next.includes(s)} disabled={busy} onChange={() => toggle(s)} />
-          </label>
-        ))}
-      </div>
-      <div>
-        <p className="label">Safeguards</p>
-        {SIGNALS.map((s) => {
-          const key = s.address.toLowerCase();
-          const backup = nextSafeguards[key];
-          const choices = SCHEMES.filter((c) => c !== s.breaks);
-          // The saved backup, or else one that isn't a scheme already (a backup that is adds nothing).
-          const fallback = safeguards[key] ?? choices.find((c) => !current.includes(c)) ?? choices[choices.length - 1];
-          const brokenAt = signals[key] ?? 0;
-          const set = (scheme: Scheme | null) => setNextSafeguards((g) => ({ ...g, [key]: scheme }));
-          return (
-            <div key={key} className="safeguard">
-              <div className="toggle-row">
-                <span>
-                  {s.label}? Also require{" "}
-                  <select
-                    className="select"
-                    aria-label="Backup scheme"
-                    value={backup ?? fallback}
-                    disabled={busy || !deployed || backup === null}
-                    onChange={(e) => set(e.target.value as Scheme)}
-                  >
-                    {choices.map((c) => (
-                      <option key={c} value={c}>
-                        {SCHEME_INFO[c].label}
-                      </option>
-                    ))}
-                  </select>
-                </span>
-                <input
-                  type="checkbox"
-                  className="switch"
-                  checked={backup !== null}
-                  disabled={busy || !deployed}
-                  onChange={() => set(backup === null ? fallback : null)}
-                  aria-label={`Require a backup if ${s.label}`}
-                />
-              </div>
-              <p className="hint">
-                {deployed === undefined
-                  ? ""
-                  : deployed === false
-                  ? "Available after your first transaction."
-                  : brokenAt === 0
-                    ? "Not signalled."
-                    : `Signalled ${new Date(brokenAt * 1000).toLocaleDateString(undefined, { dateStyle: "medium" })}` +
-                      (safeguards[key] ? ` · ${SCHEME_INFO[safeguards[key]!].label} now required.` : ".")}
-              </p>
-            </div>
-          );
-        })}
-      </div>
+      <Header title={deployed === undefined ? "Schemes" : setup ? "Set up your wallet" : "Change schemes"} onBack={onBack} />
+      <p className="hint">
+        {setup
+          ? "Choose the signatures every transaction needs, and the safeguards. Your wallet is deployed with these."
+          : "Choose which signatures every transaction needs."}
+      </p>
+      <SchemeChoices
+        account={account}
+        schemes={next}
+        onSchemes={setNext}
+        safeguards={nextSafeguards}
+        onSafeguards={setNextSafeguards}
+        signals={signals}
+        deployed={deployed}
+        disabled={busy !== ""}
+      />
       {tracker ? (
         <SendProgress tracker={tracker} />
       ) : next.length === 0 ? (
         <p className="error">Keep at least one scheme.</p>
-      ) : deployed === false ? (
-        changed && (
-          <p className="hint">
-            This wallet isn't deployed yet, so the change is just saved here: no transaction, no fee. Your first
-            transaction deploys it with these schemes.
-          </p>
-        )
+      ) : setup ? (
+        <div className="panel">
+          <div className="row" style={{ justifyContent: "space-between", fontSize: 13 }}>
+            <span style={{ color: "var(--muted)" }}>Deployment fee</span>
+            <span>{changed ? "shown once saved" : funds ? `up to ${formatEth(funds.maxFee, 5)} ETH` : "—"}</span>
+          </div>
+          {funds && !changed && !canDeploy && <p className="hint" style={{ marginTop: 6 }}>Add ETH to pay the deployment fee first.</p>}
+        </div>
       ) : (
         changed && (
           <div className="warning">
@@ -212,22 +174,37 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
         )
       )}
       <div className="spacer">
-        {needsPassword && (
+        {(!setup || adding || canDeploy || (changed && funded)) && (
           <>
             <p className="label">Password</p>
-            <input className="field" type="password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} />
+            <input className="field" type="password" value={password} disabled={busy !== ""} onChange={(e) => setPassword(e.target.value)} />
           </>
         )}
       </div>
       {error && <p className="error check-lines">{error}</p>}
       {done && <p className="hint">{done}</p>}
-      <button
-        className="btn btn-primary"
-        disabled={busy || deployed === undefined || (needsPassword && !password) || !changed || next.length === 0}
-        onClick={apply}
-      >
-        {busy ? "Applying…" : deployed === false ? "Save" : "Sign and apply"}
-      </button>
+      {setup ? (
+        <div className="row">
+          <button className="btn btn-secondary" disabled={busy !== "" || !changed || next.length === 0 || (adding && !password)} onClick={save}>
+            {busy === "save" ? "Saving…" : "Save"}
+          </button>
+          <button
+            className="btn btn-primary"
+            disabled={busy !== "" || next.length === 0 || !password || !funded || (!changed && !canDeploy)}
+            onClick={deploy}
+          >
+            {busy === "deploy" ? "Deploying…" : changed ? "Save and deploy" : "Deploy now"}
+          </button>
+        </div>
+      ) : (
+        <button
+          className="btn btn-primary"
+          disabled={busy !== "" || deployed === undefined || !password || !changed || next.length === 0}
+          onClick={apply}
+        >
+          {busy === "apply" ? "Applying…" : "Sign and apply"}
+        </button>
+      )}
     </div>
   );
 }
