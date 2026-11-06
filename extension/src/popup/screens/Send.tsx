@@ -2,6 +2,7 @@ import { useState } from "react";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { MOCK_ACCOUNT } from "../mock";
+import { ecdsaSign } from "../../wallet/ecdsa";
 import { falconSign } from "../../wallet/falcon";
 import { withSigningKeys } from "../../wallet/keyring";
 import { WrongPasswordError } from "../../wallet/vault";
@@ -18,7 +19,8 @@ export function Send({ onBack }: { onBack: () => void }) {
       const started = performance.now();
       await withSigningKeys(password, schemes, async (keys) => {
         // TODO: sign the frame transaction's sig hash once the builder exists. Until then, sign a
-        // dummy digest so the Falcon signer runs inside the real extension.
+        // dummy digest so the signers run inside the real extension.
+        if (keys.ecdsa) ecdsaSign(keys.ecdsa, new Uint8Array(32));
         if (keys.falcon) await falconSign(keys.falcon, new Uint8Array(32));
       });
       const ms = Math.round(performance.now() - started);
