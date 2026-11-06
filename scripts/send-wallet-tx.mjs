@@ -89,7 +89,11 @@ const report = (n) => (listed[n.to?.toLowerCase()] ? [`${listed[n.to.toLowerCase
 for (const entry of probe.erc7562Trace ?? []) for (const line of report(entry.root)) console.log(`trace frame ${entry.frameIndex}: ${line}`);
 const used = probe.frames.map((f) => BigInt(f.gasUsed));
 const margin = (g) => g + g / 50n + 2_000n;
-const limits = deployed ? { deployGas: 0n, verifyGas: margin(used[0]) } : { deployGas: margin(used[0]), verifyGas: margin(used[1]) };
+// Re-signing changes the Falcon signature, whose hash-to-point needs 8 or 9 SHAKE blocks (~48k gas apart):
+// cover the expensive case. The VPR sidecar's Falcon credit absorbs the extra limit.
+const falconMargin = names.includes("falcon") ? 60_000n : 0n;
+const verifyGas = (g) => margin(g) + falconMargin;
+const limits = deployed ? { deployGas: 0n, verifyGas: verifyGas(used[0]) } : { deployGas: margin(used[0]), verifyGas: verifyGas(used[1]) };
 console.log(`simulated gas per frame: ${used.join(", ")}; declared deploy ${limits.deployGas}, verify ${limits.verifyGas}`);
 if (process.env.DRY_RUN) process.exit(0);
 
