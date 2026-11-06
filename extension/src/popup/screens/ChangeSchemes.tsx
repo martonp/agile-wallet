@@ -1,11 +1,21 @@
 import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { type Safeguards, SchemeChoices, choicesChanged, ruleChoices, safeguardsChanged, safeguardsOf } from "../components/SchemeChoices";
-import { SendProgress, type Tracker } from "../components/SendProgress";
+import { SchemeChip } from "../components/SchemeChip";
+import type { Tracker } from "../components/SendProgress";
+import { Submission } from "../components/Submission";
 import { SCHEMES, SCHEME_INFO, type Scheme } from "../schemes";
 import { type Account, type SignalStates, accountState, formatEth, loadAccount, raisedRules, syncAccount } from "../../wallet/account";
 import { SIGNALS, loadNetwork } from "../../wallet/network";
-import { type Progress, changeSchemes, changeSchemesBeforeDeployment, deployFee, deployWallet } from "../../wallet/transaction";
+import {
+  type Progress,
+  type RuleChoice,
+  type Sent,
+  changeSchemes,
+  changeSchemesBeforeDeployment,
+  deployFee,
+  deployWallet,
+} from "../../wallet/transaction";
 import { explain } from "../../wallet/errors";
 
 const signalLabel = (address: string) => SIGNALS.find((s) => s.address.toLowerCase() === address.toLowerCase())?.label ?? address;
@@ -24,6 +34,10 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
   const [tracker, setTracker] = useState<Tracker>();
   const [done, setDone] = useState("");
   const [error, setError] = useState("");
+  // A transaction (applying a change, or deploying) is signed and sent on a submission screen of its own.
+  const [submission, setSubmission] = useState<{ kind: "apply" | "deploy"; schemes: Scheme[]; rules: RuleChoice[] }>();
+  const [sent, setSent] = useState<Sent>();
+  const [note, setNote] = useState(""); // what a mined change did
 
   function show(loaded: Account | undefined) {
     setAccount(loaded);
@@ -76,11 +90,15 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
     }
   }
 
-  // Runs `work` with the busy state, the progress and the error shown, and the password cleared after.
+  // Runs `work` with the busy state and the error shown (on the submission screen for a transaction, on the form for
+  // a save), and the password cleared after.
   async function run(kind: "save" | "deploy" | "apply", work: () => Promise<void>) {
     setError("");
     setDone("");
     setTracker(undefined);
+    setSent(undefined);
+    setNote("");
+    if (kind !== "save") setSubmission({ kind, schemes: next, rules });
     setBusy(kind);
     try {
       await work();
@@ -98,16 +116,17 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
 
   const apply = () =>
     run("apply", async () => {
-      const sent = await changeSchemes(password, account!, { schemes: next, rules }, onProgress);
-      setTracker((t) => t && { ...t, phase: "done", block: sent.block, ok: sent.ok });
-      if (!sent.ok) return setError("The change was mined but failed, so the schemes and safeguards stay as they were.");
+      const result = await changeSchemes(password, account!, { schemes: next, rules }, onProgress);
+      setTracker((t) => t && { ...t, phase: "done", block: result.block, ok: result.ok });
+      setSent(result);
+      if (!result.ok) return;
       show(await loadAccount(index));
-      setDone(
+      setNote(
         !rulesChanged || schemesChanged
           ? `Every transaction now needs ${next.length === 1 ? "this signature" : "these signatures"}.`
           : rules.length === 0
-            ? "Saved. The safeguard is off."
-            : `Saved. ${rules.map((r) => `Once "${signalLabel(r.signal)}" is signalled, ${SCHEME_INFO[r.scheme].label} will also be required.`).join(" ")}`,
+            ? "The safeguard is off."
+            : `${rules.map((r) => `Once "${signalLabel(r.signal)}" is signalled, ${SCHEME_INFO[r.scheme].label} will also be required.`).join(" ")}`,
       );
     });
 
@@ -127,15 +146,63 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
 
   const deploy = () =>
     run("deploy", async () => {
-      const sent = await deployWallet(password, await saveChoice(), onProgress);
-      setTracker((t) => t && { ...t, phase: "done", block: sent.block, ok: sent.ok });
-      // Deployed either way: the screen becomes Change Schemes.
+      const result = await deployWallet(password, await saveChoice(), onProgress);
+      setTracker((t) => t && { ...t, phase: "done", block: result.block, ok: result.ok });
+      setSent(result);
+      // Deployed either way: the form becomes Change Schemes.
       const loaded = await loadAccount(index);
       show(loaded);
       if (loaded) await refresh(loaded);
-      if (!sent.ok) return setError("The wallet was deployed, but setting its safeguards failed.");
-      setDone(`Deployed in block ${sent.block}.`);
     });
+
+  if (submission) {
+    const deploying = submission.kind === "deploy";
+    return (
+      <Submission
+        title={deploying ? "Set up your wallet" : "Change schemes"}
+        busyTitle={deploying ? "Deploying" : "Applying"}
+        summary={
+          <>
+            <p className="label">{deploying ? "Deploys your wallet with" : "After this change"}</p>
+            <div className="chips">
+              {submission.schemes.map((s) => (
+                <SchemeChip key={s} scheme={s} />
+              ))}
+            </div>
+            <p className="hint" style={{ marginTop: 8 }}>
+              {submission.rules.length === 0
+                ? "No safeguard."
+                : submission.rules
+                    .map((r) => `Safeguard: once "${signalLabel(r.signal)}" is signalled, ${SCHEME_INFO[r.scheme].label} will also be required.`)
+                    .join(" ")}
+            </p>
+          </>
+        }
+        tracker={tracker}
+        busy={busy !== ""}
+        sent={sent}
+        label={deploying ? "Deployed" : "Applied"}
+        note={note}
+        failed={
+          !deploying
+            ? "The schemes and safeguards stay as they were."
+            : submission.rules.length > 0
+              ? "The wallet was deployed, but setting its safeguards failed."
+              : undefined
+        }
+        retryFailed={!deploying}
+        error={error}
+        onEdit={() => {
+          setError("");
+          setTracker(undefined);
+          setSent(undefined);
+          setNote("");
+          setSubmission(undefined);
+        }}
+        onDone={onBack}
+      />
+    );
+  }
 
   const setup = deployed === false;
   const funded = funds !== undefined && funds.balance > 0n;
@@ -157,9 +224,7 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
         deployed={deployed}
         disabled={busy !== ""}
       />
-      {tracker ? (
-        <SendProgress tracker={tracker} />
-      ) : next.length === 0 ? (
+      {next.length === 0 ? (
         <p className="error">Keep at least one scheme.</p>
       ) : setup ? (
         <div className="panel">
@@ -197,7 +262,7 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
             disabled={busy !== "" || next.length === 0 || !password || !funded || (!changed && !canDeploy)}
             onClick={deploy}
           >
-            {busy === "deploy" ? "Deploying…" : changed ? "Save and deploy" : "Deploy now"}
+            {changed ? "Save and deploy" : "Deploy now"}
           </button>
         </div>
       ) : (
@@ -206,7 +271,7 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
           disabled={busy !== "" || deployed === undefined || !password || !changed || next.length === 0}
           onClick={apply}
         >
-          {busy === "apply" ? "Applying…" : "Sign and apply"}
+          Sign and apply
         </button>
       )}
     </div>

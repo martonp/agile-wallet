@@ -3,7 +3,8 @@ import { type Address, formatEther, isAddress, parseEther } from "viem";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { type Safeguards, SchemeChoices, choicesChanged, ruleChoices, safeguardsOf } from "../components/SchemeChoices";
-import { SendProgress, type Tracker } from "../components/SendProgress";
+import type { Tracker } from "../components/SendProgress";
+import { Submission } from "../components/Submission";
 import { shortAddress } from "../format";
 import { type Account, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
@@ -127,47 +128,32 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
   }
 
   if (step === "submission") {
-    // An error after the transaction reached the mempool leaves it pending: sending it again would send twice.
-    const pending = !!error && tracker?.phase === "mining";
-    const edit = () => {
-      setError("");
-      setTracker(undefined);
-      setStep(deploys ? "deployment" : "amount");
-    };
     return (
-      <div className="screen">
-        <Header title={busy ? "Sending" : "Send ETH"} onBack={busy ? undefined : onBack} />
-        <div className="panel">
-          <div className="balance">{formatEther(sending)} ETH</div>
-          <p className="hint">
-            to <span className="mono">{shortAddress(to)}</span>
-            {deploys && ", and deploys your wallet"}
-          </p>
-        </div>
-        {tracker ? <SendProgress tracker={tracker} /> : busy && <p className="hint">Preparing the keys…</p>}
-        {sent && (
-          <p className={sent.ok ? "hint" : "error"}>
-            {sent.ok ? "Sent" : "Mined, but a frame failed"} in block {sent.block.toString()}:{" "}
-            <span className="mono">{shortAddress(sent.hash)}</span>
-          </p>
-        )}
-        {error && (
-          <p className="error check-lines">
-            {error}
-            {pending && " It may still be mined: its entry in Activity will show."}
-          </p>
-        )}
-        <div className="row spacer">
-          {error && !pending && (
-            <button className="btn btn-secondary" onClick={edit}>
-              Edit
-            </button>
-          )}
-          <button className="btn btn-primary" disabled={busy} onClick={onBack}>
-            {busy ? "Sending…" : "Back to account"}
-          </button>
-        </div>
-      </div>
+      <Submission
+        title="Send ETH"
+        busyTitle="Sending"
+        summary={
+          <>
+            <div className="balance">{formatEther(sending)} ETH</div>
+            <p className="hint">
+              to <span className="mono">{shortAddress(to)}</span>
+              {deploys && ", and deploys your wallet"}
+            </p>
+          </>
+        }
+        tracker={tracker}
+        busy={busy}
+        sent={sent}
+        label="Sent"
+        error={error}
+        onEdit={() => {
+          setError("");
+          setTracker(undefined);
+          setSent(undefined);
+          setStep(deploys ? "deployment" : "amount");
+        }}
+        onDone={onBack}
+      />
     );
   }
 
