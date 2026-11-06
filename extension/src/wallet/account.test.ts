@@ -33,8 +33,9 @@ beforeEach(() => {
   (globalThis as any).chrome = {
     storage: {
       local: {
-        get: async (key: string) => (key in store ? { [key]: store[key] } : {}),
+        get: async (key: string | null) => (key === null ? { ...store } : key in store ? { [key]: store[key] } : {}),
         set: async (items: Record<string, unknown>) => Object.assign(store, items),
+        remove: async (keys: string[]) => keys.forEach((key) => delete store[key]),
       },
     },
   };

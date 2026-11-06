@@ -1,7 +1,7 @@
 import { beforeEach, expect, test } from "vitest";
 import type { SigningKeys } from "./derive";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { listAccounts, loadAccount, selectedAccount } from "./account";
+import { accountCount, listAccounts, loadAccount, savePendingSchemes, selectedAccount } from "./account";
 import { ecdsaAddress } from "./ecdsa";
 import { addAccount, createWallet, hasWallet, withSigningKeys } from "./keyring";
 import { generateEntropy } from "./mnemonic";
@@ -13,8 +13,9 @@ beforeEach(() => {
   (globalThis as any).chrome = {
     storage: {
       local: {
-        get: async (key: string) => (key in store ? { [key]: store[key] } : {}),
+        get: async (key: string | null) => (key === null ? { ...store } : key in store ? { [key]: store[key] } : {}),
         set: async (items: Record<string, unknown>) => Object.assign(store, items),
+        remove: async (keys: string[]) => keys.forEach((key) => delete store[key]),
       },
     },
   };
@@ -68,4 +69,17 @@ test("adds accounts from the same seed, each with its own keys, and selects the 
   expect(await withSigningKeys("pw", ["ecdsa"], address, 1)).toBe(added.owner);
   expect(await withSigningKeys("pw", ["ecdsa"], address, 0)).toBe((await loadAccount(0))!.owner);
   await expect(addAccount("wrong", "Other", ["ecdsa"])).rejects.toThrow(WrongPasswordError);
+});
+
+test("creating a wallet again replaces every account of the old one", async () => {
+  await createWallet("pw", generateEntropy(), ["ecdsa"], null);
+  const old = await addAccount("pw", "Old second", ["ecdsa"]);
+  await savePendingSchemes(1, old.schemes);
+
+  await createWallet("pw2", generateEntropy(), ["ecdsa"], null);
+  expect((await listAccounts()).map((a) => a.name)).toEqual(["Account 1"]);
+  expect(await accountCount()).toBe(1);
+  expect(await loadAccount(1)).toBeUndefined();
+  expect(await selectedAccount()).toBe(0);
+  expect(await chrome.storage.local.get("pendingSchemes:1")).toEqual({});
 });

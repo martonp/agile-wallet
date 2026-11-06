@@ -102,6 +102,15 @@ export async function selectAccount(index: number): Promise<void> {
   await chrome.storage.local.set({ [SELECTED_KEY]: index });
 }
 
+// Removes every account record and pending change, the count and the selection: all a wallet keeps besides its
+// vault. Matches the keys themselves rather than trusting the count, so nothing of an old wallet survives.
+export async function clearAccounts(): Promise<void> {
+  const keys = Object.keys(await chrome.storage.local.get(null)).filter(
+    (key) => /^(account|pendingSchemes)(:\d+)?$/.test(key) || key === COUNT_KEY || key === SELECTED_KEY,
+  );
+  await chrome.storage.local.remove(keys);
+}
+
 const SCHEMES_HASH = toFunctionSelector("schemesHash()");
 
 // keccak256(abi.encode(Scheme[])): what AgileWallet stores for its scheme list.

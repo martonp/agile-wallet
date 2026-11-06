@@ -1,4 +1,4 @@
-import { type Account, accountCount, deriveAccount, loadAccount, saveAccount, selectAccount } from "./account";
+import { type Account, accountCount, clearAccounts, deriveAccount, loadAccount, saveAccount, selectAccount } from "./account";
 import { deriveSigningKeys, wipeKeys, type SigningKeys } from "./derive";
 import { entropyToSeed } from "./mnemonic";
 import { type Network, loadNetwork } from "./network";
@@ -7,7 +7,8 @@ import { decryptSecret, encryptSecret, loadVault, saveVault } from "./vault";
 
 // The vault holds the mnemonic's entropy, not the phrase: bytes can be wiped, strings can't. Account 0 (owner and
 // public keys of the chosen schemes, or of the schemes its wallet already has on the network, for an imported
-// phrase) is stored in the clear next to it. `network: null` skips looking on chain.
+// phrase) is stored in the clear next to it, replacing every account of any previous wallet: their keys came from
+// another phrase. `network: null` skips looking on chain.
 export async function createWallet(
   password: string,
   entropy: Uint8Array,
@@ -15,12 +16,15 @@ export async function createWallet(
   network?: Network | null,
 ): Promise<void> {
   const seed = entropyToSeed(entropy);
+  let account: Account;
   try {
     const onchain = network === undefined ? await loadNetwork() : (network ?? undefined);
-    await saveAccount(await deriveAccount(seed, schemes, 0, "Account 1", onchain));
+    account = await deriveAccount(seed, schemes, 0, "Account 1", onchain);
   } finally {
     seed.fill(0);
   }
+  await clearAccounts();
+  await saveAccount(account);
   await saveVault(await encryptSecret(password, entropy));
   await selectAccount(0);
 }
