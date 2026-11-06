@@ -11,9 +11,11 @@ mempool in which post-quantum signature checks fit the validation budget, withou
 ECDSA with BIP-32 (`m/44'/60'/a'/0/i`), Falcon and SPHINCS- from
 `HMAC-SHA512(seed, "agile-wallet/<label>/" ‖ a ‖ i)` with the labels `falcon-512` and `sphincs`.
 
-**The account.** `AgileWallet` holds a list of schemes, each a verifier contract plus a public key,
-and stores only the list's hash. A transaction carries the list and one signature per scheme; the
-wallet's VERIFY frame checks each signature with its verifier, then approves the transaction.
+**The account.** `AgileWallet` holds a list of schemes, each a verifier contract plus a public key
+(or native ECDSA: an address), and stores only the list's hash. A transaction carries the list and
+one signature per scheme; the wallet's VERIFY frame checks each signature with its verifier, then
+approves the transaction. ECDSA uses the transaction's own SECP256K1 signature, which the protocol
+verifies; the wallet only checks its signer.
 
 - Any signature scheme works: adding one means deploying a new verifier, not changing the wallet.
 - Changing the list (`setSchemes`) needs signatures from both the old and the new schemes.
@@ -21,11 +23,11 @@ wallet's VERIFY frame checks each signature with its verifier, then approves the
   whatever schemes the wallet starts with. The first transaction deploys the wallet and also
   carries the owner's ECDSA signature.
 
-**Verifiers.** Every scheme has an `IVerifier` adapter in `contracts/src`:
+**Verifiers.** Every post-quantum scheme has an `IVerifier` adapter in `contracts/src`:
 
 | Scheme | Verifies with | EVM gas per verification |
 |---|---|---|
-| ECDSA | `ecrecover` | ~5k |
+| ECDSA | the protocol (SECP256K1 signature) | none |
 | Falcon-512 | ZKNOX `falcon8` | 590k–635k |
 | SPHINCS- C13 | nconsigny's `SphincsC13Asm` | 97k |
 
@@ -79,10 +81,12 @@ Each step starts from the repository root.
 - On a local devnet, a SPHINCS- wallet's first transaction (deploy and transfer) and a second
   transfer were admitted through VPR and mined. The canonical mempool would reject both. With two
   VPR nodes peered, a transaction sent to one was gossiped on the VPR topic to the other.
-- Wallets with Falcon don't fit yet: work outside the verifiers (deployment, the wallet's own
-  checks) must stay under 100,000 gas, and with Falcon's 1 KB key it comes to about 111,000.
-- The extension creates, stores and unlocks the wallet and signs with ECDSA and Falcon; it does
-  not send transactions yet.
+- Wallets with Falcon (alone or with ECDSA and SPHINCS-) send through VPR only thanks to the
+  sidecar's stand-in credit, 750,000 gas per Falcon call, which also covers the wallet's margin for
+  Falcon's varying cost (588k–636k). With exact per-call gas, a Falcon wallet's first (deploying)
+  transaction would need about 110,000–120,000 of the 100,000 budget.
+- The extension creates, stores and unlocks the wallet and signs with ECDSA, Falcon and
+  SPHINCS-; it does not send transactions yet.
 - The sidecar matches verifiers by their configured addresses; it does not yet check code hashes
   or function selectors, and its base rules are the standard alt-mempool's rather than exactly the
   canonical mempool's.
