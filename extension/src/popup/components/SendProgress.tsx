@@ -52,7 +52,7 @@ export function SendProgress({ tracker }: { tracker: Tracker }) {
         {phase === "mining" ? (
           failed ? <Status icon="failed">not mined</Status> : <Status icon="active">waiting for a block…</Status>
         ) : phase === "done" ? (
-          <Status icon={ok ? "done" : "failed"}>{ok ? `block ${block}` : `a frame failed, block ${block}`}</Status>
+          <Status icon={ok ? "done" : "failed"}>{ok ? `#${block}` : `#${block}, a frame failed`}</Status>
         ) : (
           <Status>waiting</Status>
         )}

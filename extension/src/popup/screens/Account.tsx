@@ -23,6 +23,7 @@ export function Account({ index, onSelect, onAddAccount, onSend, onSchemes, onSe
   const [state, setState] = useState<AccountState>();
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [uncopied, setUncopied] = useState(""); // the address, when the browser refused the clipboard
 
   // Re-reads the address, balance and deployment every 2 seconds while the screen is open; each read waits for the
   // previous one, so a slow node never stacks requests.
@@ -64,11 +65,16 @@ export function Account({ index, onSelect, onAddAccount, onSend, onSchemes, onSe
     };
   }, [index]);
 
+  // Falls back to showing the whole address when the browser refuses the clipboard.
   async function copy() {
     if (!state) return;
-    await navigator.clipboard.writeText(state.address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    try {
+      await navigator.clipboard.writeText(state.address);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setUncopied(state.address);
+    }
   }
 
   const schemes = account?.schemes.map((s) => s.scheme) ?? [];
@@ -96,6 +102,11 @@ export function Account({ index, onSelect, onAddAccount, onSend, onSchemes, onSe
         {state && !state.deployed && <p className="hint">Not deployed yet: your first transaction deploys it.</p>}
       </div>
       {error && <p className="error">{error}</p>}
+      {uncopied && (
+        <p className="hint check-lines">
+          Couldn't copy. Your address: <span className="mono">{uncopied}</span>
+        </p>
+      )}
       {state && !state.schemesMatch && (
         <div className="warning">The schemes saved here aren't this wallet's schemes on chain, so its transactions will fail.</div>
       )}
