@@ -15,17 +15,35 @@ export function Account({ onSend, onSchemes, onSettings, onLock }: Props) {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
+  // Re-reads the address, balance and deployment every 2 seconds while the screen is open; each read waits for the
+  // previous one, so a slow node never stacks requests.
   useEffect(() => {
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     (async () => {
       const loaded = await loadAccount();
+      if (stopped) return;
       setAccount(loaded);
       if (!loaded) return;
-      try {
-        setState(await accountState(await loadNetwork(), loaded));
-      } catch {
-        setError("Can't reach the network. Check its settings.");
-      }
+      const network = await loadNetwork();
+      const refresh = async () => {
+        try {
+          const next = await accountState(network, loaded);
+          if (stopped) return;
+          setState(next);
+          setError("");
+        } catch {
+          if (stopped) return;
+          setError("Can't reach the network. Check its settings.");
+        }
+        timer = setTimeout(refresh, 2000);
+      };
+      await refresh();
     })();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
   }, []);
 
   async function copy() {
