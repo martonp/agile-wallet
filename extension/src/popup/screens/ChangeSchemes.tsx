@@ -165,7 +165,7 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
           <>
             <p className="label">{deploying ? "Deploys your wallet with" : "After this change"}</p>
             <div className="chips">
-              {submission.schemes.map((s) => (
+              {SCHEMES.filter((s) => submission.schemes.includes(s)).map((s) => (
                 <SchemeChip key={s} scheme={s} />
               ))}
             </div>
