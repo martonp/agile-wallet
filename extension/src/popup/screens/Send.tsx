@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { MOCK_ACCOUNT } from "../mock";
+import type { Scheme } from "../schemes";
+import { loadAccount } from "../../wallet/account";
 import { ecdsaSign } from "../../wallet/ecdsa";
 import { falconSign } from "../../wallet/falcon";
 import { sphincsSign } from "../../wallet/sphincs";
@@ -9,10 +11,15 @@ import { withSigningKeys } from "../../wallet/keyring";
 import { WrongPasswordError } from "../../wallet/vault";
 
 export function Send({ onBack }: { onBack: () => void }) {
-  const { balance, fee, schemes } = MOCK_ACCOUNT;
+  const { balance, fee } = MOCK_ACCOUNT;
+  const [schemes, setSchemes] = useState<Scheme[]>([]);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ error?: string; info?: string }>({});
+
+  useEffect(() => {
+    loadAccount().then((account) => setSchemes(account?.schemes.map((s) => s.scheme) ?? []));
+  }, []);
 
   async function signAndSend() {
     setBusy(true);
