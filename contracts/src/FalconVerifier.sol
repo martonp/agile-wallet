@@ -41,13 +41,21 @@ contract FalconVerifier is IVerifier {
     }
 
     /// 512 big-endian 16-bit coefficients into 32 words; coefficient i sits at bits 16*(i%16) of word i/16.
+    /// Each 32-byte chunk holds 16 coefficients, first one in the top lane; reversing the order of its 16-bit lanes
+    /// (swap halves, then quarters, eighths, sixteenths) puts the first one in the bottom lane.
     function _pack(bytes calldata coefficients) private pure returns (uint256[] memory words) {
         words = new uint256[](32);
         assembly ("memory-safe") {
-            for { let i := 0 } lt(i, 512) { i := add(i, 1) } {
-                let c := shr(240, calldataload(add(coefficients.offset, mul(2, i))))
-                let slot := add(add(words, 0x20), shl(5, shr(4, i)))
-                mstore(slot, or(mload(slot), shl(shl(4, and(i, 15)), c)))
+            let m64 := 0x0000000000000000ffffffffffffffff0000000000000000ffffffffffffffff
+            let m32 := 0x00000000ffffffff00000000ffffffff00000000ffffffff00000000ffffffff
+            let m16 := 0x0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff0000ffff
+            for { let i := 0 } lt(i, 32) { i := add(i, 1) } {
+                let x := calldataload(add(coefficients.offset, shl(5, i)))
+                x := or(shr(128, x), shl(128, x))
+                x := or(and(shr(64, x), m64), shl(64, and(x, m64)))
+                x := or(and(shr(32, x), m32), shl(32, and(x, m32)))
+                x := or(and(shr(16, x), m16), shl(16, and(x, m16)))
+                mstore(add(add(words, 0x20), shl(5, i)), x)
             }
         }
     }
