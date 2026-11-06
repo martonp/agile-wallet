@@ -90,7 +90,7 @@ export function buildTransfer(ctx: TransferContext, transfer: Transfer, limits: 
     nonceSeq: ctx.nonce,
     frames,
     signatures,
-    fees: { maxFeePerGas: ctx.maxFeePerGas },
+    fees: { maxFeePerGas: ctx.maxFeePerGas, maxPriorityFeePerGas: TIP },
   });
 }
 
@@ -169,22 +169,24 @@ interface Receipt {
   frameReceipts?: { status: Hex }[];
 }
 
+// A fixed tip, as the devnet scripts pay. Following the node's suggested price instead feeds back on a quiet chain:
+// the suggestion comes from recent tips, so paying above it raises it for the next transaction.
+const TIP = 2_000_000_000n; // 2 gwei
+
 async function transferContext(network: Network, account: Account): Promise<TransferContext> {
   const state = await accountState(network, account);
-  const [chainId, nonce, gasPrice] = await Promise.all([
+  const [chainId, nonce, block] = await Promise.all([
     rpc<Hex>(network.rpcUrl, "eth_chainId"),
     rpc<Hex>(network.rpcUrl, "eth_getTransactionCount", [state.address, "latest"]),
-    rpc<Hex>(network.rpcUrl, "eth_gasPrice"),
+    rpc<{ baseFeePerGas?: Hex }>(network.rpcUrl, "eth_getBlockByNumber", ["latest", false]),
   ]);
-  const twice = 2n * BigInt(gasPrice);
-  const floor = 2_000_000_000n; // 2 gwei, what the devnet scripts pay
   return {
     account,
     wallet: state.address as Address,
     deployed: state.deployed,
     chainId: BigInt(chainId),
     nonce: BigInt(nonce),
-    maxFeePerGas: twice > floor ? twice : floor,
+    maxFeePerGas: 2n * BigInt(block.baseFeePerGas ?? "0x0") + TIP, // room for the base fee to double
   };
 }
 

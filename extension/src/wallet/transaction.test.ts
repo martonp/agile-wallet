@@ -28,6 +28,7 @@ test("the first transaction deploys, validates, then transfers", async () => {
   expect(unsigned.frames[1].target).toBeNull(); // the wallet itself
   expect(unsigned.frames[1].limits.execution).toBe(200_000n);
   expect(unsigned.frames[2]).toMatchObject({ target: transfer.to, value: transfer.value });
+  expect(unsigned.fees.maxPriorityFeePerGas).toBe(2_000_000_000n); // a fixed 2 gwei tip
   // ECDSA's entry is SECP256K1 and also authorises the deployment, so no extra owner entry.
   expect(unsigned.signatures.map((s) => s.scheme)).toEqual([tx.sigScheme(PROFILE, "SECP256K1"), tx.sigScheme(PROFILE, "ARBITRARY")]);
 });
