@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { selectAccount, selectedAccount } from "../wallet/account";
+import { type Account as AccountData, selectAccount, selectedAccount } from "../wallet/account";
+import { SCHEME_INFO } from "./schemes";
 import { hasWallet } from "../wallet/keyring";
 import { Onboarding } from "./screens/Onboarding";
 import { Unlock } from "./screens/Unlock";
@@ -16,11 +17,24 @@ type Screen = "onboarding" | "unlock" | "account" | "send" | "schemes" | "settin
 export function App() {
   const [screen, setScreen] = useState<Screen>();
   const [index, setIndex] = useState(0);
-  const toAccount = () => setScreen("account");
+  const [notice, setNotice] = useState(""); // shown once on the Account screen, cleared by the next navigation
+  const go = (next: Screen) => {
+    setNotice("");
+    setScreen(next);
+  };
+  const toAccount = () => go("account");
   const select = async (next: number) => {
     await selectAccount(next);
     setIndex(next);
-    setScreen("account");
+    go("account");
+  };
+  // A new account whose wallet was already on chain keeps the schemes it has there, whatever was chosen: say so.
+  const created = async (account: AccountData) => {
+    await select(account.index);
+    if (account.restored) {
+      const schemes = account.schemes.map((s) => SCHEME_INFO[s.scheme].label).join(", ");
+      setNotice(`This account's wallet is already on chain, so it keeps the schemes it has there: ${schemes}.`);
+    }
   };
 
   useEffect(() => {
@@ -34,20 +48,21 @@ export function App() {
     case undefined:
       return null;
     case "onboarding":
-      return <Onboarding onDone={() => select(0)} />;
+      return <Onboarding onDone={created} />;
     case "unlock":
-      return <Unlock onUnlock={toAccount} onForgot={() => setScreen("onboarding")} />;
+      return <Unlock onUnlock={toAccount} onForgot={() => go("onboarding")} />;
     case "account":
       return (
         <Account
           key={index}
           index={index}
+          notice={notice}
           onSelect={select}
-          onAddAccount={() => setScreen("addAccount")}
-          onSend={() => setScreen("send")}
-          onSchemes={() => setScreen("schemes")}
-          onSettings={() => setScreen("settings")}
-          onLock={() => setScreen("unlock")}
+          onAddAccount={() => go("addAccount")}
+          onSend={() => go("send")}
+          onSchemes={() => go("schemes")}
+          onSettings={() => go("settings")}
+          onLock={() => go("unlock")}
         />
       );
     case "send":
@@ -55,7 +70,7 @@ export function App() {
     case "schemes":
       return <ChangeSchemes index={index} onBack={toAccount} />;
     case "addAccount":
-      return <AddAccount onBack={toAccount} onDone={select} />;
+      return <AddAccount onBack={toAccount} onDone={created} />;
     case "settings":
       return <Settings onBack={toAccount} />;
   }

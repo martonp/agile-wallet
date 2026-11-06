@@ -160,3 +160,13 @@ test("a deployed wallet's schemes are recovered from its hash, trying only the s
   stubNode(schemesHash([{ scheme: "falcon", publicKey: "0xbeef" }])); // a key that isn't the seed's
   expect(await recoverSchemes(LOCAL_DEVNET, ecdsa.publicKey, all)).toBeUndefined();
 });
+
+test("an account whose wallet is on chain says its schemes were restored; the flag isn't saved", async () => {
+  // Account 0 of `seed`, deployed with ECDSA only.
+  const ecdsaOnly = (await deriveAccount(seed, ["ecdsa"])).schemes;
+  stubNode(schemesHash(ecdsaOnly));
+  const restored = await deriveAccount(seed, ["falcon", "sphincs"], 0, "Account 1", LOCAL_DEVNET);
+  expect(restored).toMatchObject({ schemes: ecdsaOnly, restored: true });
+  await saveAccount(restored);
+  expect(await loadAccount(0)).not.toHaveProperty("restored");
+});

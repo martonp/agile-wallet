@@ -14,6 +14,7 @@ export interface Account {
   name: string;
   owner: string; // the ECDSA address that authorises the wallet's deployment, and fixes its address
   schemes: { scheme: Scheme; publicKey: string }[]; // in SCHEMES order; ECDSA's public key is its address
+  restored?: boolean; // set by deriveAccount when the schemes came from the wallet on chain; never saved
 }
 
 // Each account under its own key, so a write to one never touches another: account 0 at "account", then
@@ -37,7 +38,8 @@ export async function deriveAccount(
     for (const scheme of SCHEMES) all.push({ scheme, publicKey: await publicKeyOf(scheme, keys) });
     const owner = all.find((s) => s.scheme === "ecdsa")!.publicKey;
     const onchain = network && (await recoverSchemes(network, owner, all).catch(() => undefined));
-    const chosen = onchain ?? all.filter((s) => schemes.includes(s.scheme));
+    if (onchain) return { index, name, owner, schemes: onchain, restored: true };
+    const chosen = all.filter((s) => schemes.includes(s.scheme));
     if (chosen.length === 0) throw new Error("Choose at least one scheme");
     return { index, name, owner, schemes: chosen };
   } finally {
@@ -67,7 +69,7 @@ export async function publicKeyOf(scheme: Scheme, keys: SigningKeys): Promise<st
 
 // Saves the account under its own key, and counts it if it's new. Only adding an account writes the count.
 export async function saveAccount(account: Account): Promise<void> {
-  const { index, ...stored } = account;
+  const { index, restored: _, ...stored } = account;
   await chrome.storage.local.set({ [keyOf("account", index)]: stored });
   if (index >= (await accountCount())) await chrome.storage.local.set({ [COUNT_KEY]: index + 1 });
 }

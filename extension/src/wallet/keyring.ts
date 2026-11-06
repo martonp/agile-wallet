@@ -14,7 +14,7 @@ export async function createWallet(
   entropy: Uint8Array,
   schemes: Scheme[],
   network?: Network | null,
-): Promise<void> {
+): Promise<Account> {
   const seed = entropyToSeed(entropy);
   let account: Account;
   try {
@@ -27,6 +27,7 @@ export async function createWallet(
   await saveAccount(account);
   await saveVault(await encryptSecret(password, entropy));
   await selectAccount(0);
+  return account;
 }
 
 // The next account of the same seed. If its wallet is already on `network` (restored from the recovery phrase),

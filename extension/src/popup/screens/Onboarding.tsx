@@ -3,6 +3,7 @@ import { Header } from "../components/Header";
 import { Dodger } from "../components/Dodger";
 import { SchemeChip } from "../components/SchemeChip";
 import { SCHEMES, type Scheme } from "../schemes";
+import type { Account } from "../../wallet/account";
 import { createWallet } from "../../wallet/keyring";
 import { entropyToPhrase, generateEntropy, phraseToEntropy } from "../../wallet/mnemonic";
 
@@ -10,7 +11,7 @@ const MIN_PASSWORD = 8;
 
 type Mode = "choose" | "create" | "import" | "backup" | "schemes";
 
-export function Onboarding({ onDone }: { onDone: () => void }) {
+export function Onboarding({ onDone }: { onDone: (account: Account) => void }) {
   const [mode, setMode] = useState<Mode>("choose");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -38,9 +39,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   async function save(secret: Uint8Array) {
     setBusy(true);
     try {
-      await createWallet(password, secret, schemes);
+      const account = await createWallet(password, secret, schemes);
       secret.fill(0);
-      onDone();
+      onDone(account);
     } catch {
       setError("Couldn't create the wallet. Try again.");
     } finally {

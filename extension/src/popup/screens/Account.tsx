@@ -12,6 +12,7 @@ import { loadNetwork } from "../../wallet/network";
 
 type Props = {
   index: number;
+  notice?: string;
   onSelect: (index: number) => void;
   onAddAccount: () => void;
   onSend: () => void;
@@ -20,7 +21,7 @@ type Props = {
   onLock: () => void;
 };
 
-export function Account({ index, onSelect, onAddAccount, onSend, onSchemes, onSettings, onLock }: Props) {
+export function Account({ index, notice, onSelect, onAddAccount, onSend, onSchemes, onSettings, onLock }: Props) {
   const [account, setAccount] = useState<AccountData>();
   const [state, setState] = useState<AccountState>();
   const [error, setError] = useState("");
@@ -107,6 +108,7 @@ export function Account({ index, onSelect, onAddAccount, onSend, onSchemes, onSe
         <div className="balance">{state ? `${formatEth(state.balance)} ETH` : "—"}</div>
         {state && !state.deployed && <p className="hint">Not deployed yet: your first transaction deploys it.</p>}
       </div>
+      {notice && <div className="warning">{notice}</div>}
       {error && <p className="error">{error}</p>}
       {uncopied && (
         <p className="hint check-lines">

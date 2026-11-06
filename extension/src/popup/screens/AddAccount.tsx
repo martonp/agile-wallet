@@ -2,13 +2,13 @@ import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
 import { SchemeChip } from "../components/SchemeChip";
 import { SCHEMES, type Scheme } from "../schemes";
-import { accountCount } from "../../wallet/account";
+import { type Account, accountCount } from "../../wallet/account";
 import { addAccount } from "../../wallet/keyring";
 import { loadNetwork } from "../../wallet/network";
 import { explain } from "../../wallet/errors";
 
 // The next account of the same recovery phrase: its own keys and wallet address.
-export function AddAccount({ onBack, onDone }: { onBack: () => void; onDone: (index: number) => void }) {
+export function AddAccount({ onBack, onDone }: { onBack: () => void; onDone: (account: Account) => void }) {
   const [name, setName] = useState("");
   const [schemes, setSchemes] = useState<Scheme[]>(SCHEMES);
   const [password, setPassword] = useState("");
@@ -26,7 +26,7 @@ export function AddAccount({ onBack, onDone }: { onBack: () => void; onDone: (in
     setError("");
     try {
       const account = await addAccount(password, name.trim() || "Account", schemes, await loadNetwork());
-      onDone(account.index);
+      onDone(account);
     } catch (e) {
       setError(explain(e));
       setPassword("");
