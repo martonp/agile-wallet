@@ -17,12 +17,13 @@ type Props = {
   onAddAccount: () => void;
   onSend: () => void;
   onReceive: () => void;
+  onOpenTransaction: (hash: string) => void;
   onSchemes: () => void;
   onSettings: () => void;
   onLock: () => void;
 };
 
-export function Account({ index, notice, onSelect, onAddAccount, onSend, onReceive, onSchemes, onSettings, onLock }: Props) {
+export function Account({ index, notice, onSelect, onAddAccount, onSend, onReceive, onOpenTransaction, onSchemes, onSettings, onLock }: Props) {
   const [account, setAccount] = useState<AccountData>();
   const [state, setState] = useState<AccountState>();
   const [error, setError] = useState("");
@@ -139,7 +140,7 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
       <p className="hint">
         {schemes.length} of {SCHEMES.length} schemes protect this account
       </p>
-      <Activity history={history} />
+      <Activity history={history} onOpen={onOpenTransaction} />
       <button className="btn btn-secondary spacer" onClick={onSchemes}>
         Change schemes
       </button>

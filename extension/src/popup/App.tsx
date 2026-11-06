@@ -10,8 +10,9 @@ import { ChangeSchemes } from "./screens/ChangeSchemes";
 import { Settings } from "./screens/Settings";
 import { AddAccount } from "./screens/AddAccount";
 import { Receive } from "./screens/Receive";
+import { TransactionDetails } from "./screens/TransactionDetails";
 
-type Screen = "onboarding" | "unlock" | "account" | "send" | "receive" | "schemes" | "settings" | "addAccount";
+type Screen = "onboarding" | "unlock" | "account" | "send" | "receive" | "transaction" | "schemes" | "settings" | "addAccount";
 
 // The selected account is read here once and handed to each screen, so a screen keeps acting for the account it
 // opened with even if another popup switches accounts meanwhile.
@@ -19,6 +20,7 @@ export function App() {
   const [screen, setScreen] = useState<Screen>();
   const [index, setIndex] = useState(0);
   const [notice, setNotice] = useState(""); // shown once on the Account screen, cleared by the next navigation
+  const [transaction, setTransaction] = useState(""); // the hash the details screen shows
   const go = (next: Screen) => {
     setNotice("");
     setScreen(next);
@@ -62,6 +64,10 @@ export function App() {
           onAddAccount={() => go("addAccount")}
           onSend={() => go("send")}
           onReceive={() => go("receive")}
+          onOpenTransaction={(hash) => {
+            setTransaction(hash);
+            go("transaction");
+          }}
           onSchemes={() => go("schemes")}
           onSettings={() => go("settings")}
           onLock={() => go("unlock")}
@@ -71,6 +77,8 @@ export function App() {
       return <Send index={index} onBack={toAccount} />;
     case "receive":
       return <Receive index={index} onBack={toAccount} />;
+    case "transaction":
+      return <TransactionDetails index={index} hash={transaction} onBack={toAccount} />;
     case "schemes":
       return <ChangeSchemes index={index} onBack={toAccount} />;
     case "addAccount":

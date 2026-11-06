@@ -1,7 +1,10 @@
 .activity-row {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   width: 100%;
-  padding: 5px 0;
+  padding: 7px 0;
   border: none;
   border-bottom: 0.5px solid var(--line);
   background: none;
@@ -10,20 +13,8 @@
   cursor: pointer;
 }
 
-.activity-line {
-  display: flex;
+.activity-what {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.activity-detail {
-  display: block;
-  margin-top: 3px;
-  overflow-wrap: anywhere;
-}
-
-.activity-hash {
-  display: block;
-  margin-top: 2px;
+  gap: 6px;
 }

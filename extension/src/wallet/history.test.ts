@@ -25,7 +25,7 @@ const entry = (hash: string): HistoryEntry => ({
   to: "0x110e4a7e47bc13b9f2cb9923e17f87b41ed0d9ed",
   value: "1000000000000000",
   deploys: false,
-  signatures: [{ scheme: "ecdsa", ms: 1 }],
+  signers: ["ecdsa"],
   status: "pending",
 });
 
@@ -36,8 +36,9 @@ test("records sends per account, newest first, and settles them from their recei
   expect((await loadHistory(0)).map((e) => e.hash)).toEqual(["0xb", "0xa"]);
   expect((await loadHistory(1)).map((e) => e.hash)).toEqual(["0xc"]);
 
-  await settleEntry(0, "0xa", true, 3654);
-  expect((await loadHistory(0))[1]).toMatchObject({ hash: "0xa", status: "mined", block: 3654 });
+  // 884,959 gas at 2 gwei.
+  await settleEntry(0, "0xa", { blockNumber: "0xe46", gasUsed: "0xd80df", effectiveGasPrice: "0x77359400", frameReceipts: [{ status: "0x1" }] });
+  expect((await loadHistory(0))[1]).toMatchObject({ hash: "0xa", status: "mined", block: 3654, fee: (884_959n * 2_000_000_000n).toString() });
 });
 
 test("catches up pending entries whose popup closed before they were mined", async () => {
@@ -60,4 +61,19 @@ test("keeps the newest 50, and goes with the wallet", async () => {
   expect(history[0].hash).toBe("0x54");
   await clearAccounts();
   expect(await loadHistory(0)).toEqual([]);
+});
+
+test("entries from before kept signing times; they load with just the schemes", async () => {
+  const old = { ...entry("0xold"), signers: undefined, signatures: [{ scheme: "ecdsa", ms: 1 }, { scheme: "sphincs", ms: 3800 }] };
+  await (globalThis as any).chrome.storage.local.set({ history: [old] });
+  expect((await loadHistory(0))[0]).toMatchObject({ hash: "0xold", signers: ["ecdsa", "sphincs"] });
+  expect((await loadHistory(0))[0]).not.toHaveProperty("signatures");
+});
+
+test("fills in the fee of an entry settled before fees were recorded", async () => {
+  await addEntry(0, { ...entry("0xold"), status: "mined", block: 4003 });
+  vi.stubGlobal("fetch", async () =>
+    new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { blockNumber: "0xfa3", gasUsed: "0x10", effectiveGasPrice: "0x2", frameReceipts: [{ status: "0x1" }] } })),
+  );
+  expect((await syncHistory(LOCAL_DEVNET, 0))[0]).toMatchObject({ status: "mined", block: 4003, fee: "32" });
 });

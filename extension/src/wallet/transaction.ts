@@ -281,13 +281,11 @@ async function submit(
   // ECDSA always: it is also the check that these keys are this account's.
   const needed = [...new Set<Scheme>(["ecdsa", ...account.schemes.map((s) => s.scheme), ...extraKeys])];
 
-  // What the history records: the action, and each signature's scheme and time.
+  // What the history records: the action, and the scheme of each signature the transaction carries.
   let action: Action | undefined;
-  const signatures: { scheme: Scheme; ms: number }[] = [];
-  let entries: Signer[] = [];
+  let signedBy: Scheme[] = [];
   const record: OnProgress = (progress) => {
-    if (progress.type === "signers") entries = progress.signers;
-    if (progress.type === "signed") signatures[progress.index] = { scheme: entries[progress.index].scheme, ms: progress.ms };
+    if (progress.type === "signers") signedBy = progress.signers.map((s) => s.scheme);
     return onProgress(progress);
   };
 
@@ -324,7 +322,7 @@ async function submit(
       ? { to: done.to, value: done.value.toString() }
       : { schemes: done.schemes.map((s) => s.scheme) }),
     deploys: !ctx.deployed,
-    signatures,
+    signers: signedBy,
     status: "pending",
   });
 
@@ -334,7 +332,7 @@ async function submit(
     const receipt = await rpc<Receipt | null>(network.rpcUrl, "eth_getTransactionReceipt", [hash]);
     if (receipt) {
       const ok = receiptOk(receipt);
-      await settleEntry(account.index, hash, ok, Number(BigInt(receipt.blockNumber)));
+      await settleEntry(account.index, hash, receipt);
       return { hash, block: BigInt(receipt.blockNumber), ok };
     }
   }
