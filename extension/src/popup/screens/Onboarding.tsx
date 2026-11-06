@@ -1,15 +1,14 @@
 import { useState } from "react";
 import { Header } from "../components/Header";
 import { Dodger } from "../components/Dodger";
-import { SchemeChip } from "../components/SchemeChip";
-import { SCHEMES, type Scheme } from "../schemes";
+import { SCHEMES } from "../schemes";
 import type { Account } from "../../wallet/account";
 import { createWallet } from "../../wallet/keyring";
 import { entropyToPhrase, generateEntropy, phraseToEntropy } from "../../wallet/mnemonic";
 
 const MIN_PASSWORD = 8;
 
-type Mode = "choose" | "create" | "import" | "backup" | "schemes";
+type Mode = "choose" | "create" | "import" | "backup";
 
 export function Onboarding({ onDone }: { onDone: (account: Account) => void }) {
   const [mode, setMode] = useState<Mode>("choose");
@@ -18,7 +17,6 @@ export function Onboarding({ onDone }: { onDone: (account: Account) => void }) {
   const [phrase, setPhrase] = useState("");
   const [entropy, setEntropy] = useState<Uint8Array>();
   const [wroteItDown, setWroteItDown] = useState(false);
-  const [schemes, setSchemes] = useState<Scheme[]>(SCHEMES);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -35,11 +33,13 @@ export function Onboarding({ onDone }: { onDone: (account: Account) => void }) {
     return "";
   }
 
+  // The wallet starts with every scheme saved; the user picks its schemes when setting it up or on its first send,
+  // since they take effect only with the first transaction.
   // On failure the entropy stays for a retry; zeroed, it would make a wallet of zero bytes.
   async function save(secret: Uint8Array) {
     setBusy(true);
     try {
-      const account = await createWallet(password, secret, schemes);
+      const account = await createWallet(password, secret, SCHEMES);
       secret.fill(0);
       onDone(account);
     } catch {
@@ -49,7 +49,7 @@ export function Onboarding({ onDone }: { onDone: (account: Account) => void }) {
     }
   }
 
-  function submit() {
+  async function submit() {
     const problem = passwordError();
     if (problem) return setError(problem);
     if (mode === "create") {
@@ -64,10 +64,13 @@ export function Onboarding({ onDone }: { onDone: (account: Account) => void }) {
     } catch {
       return setError("That recovery phrase isn't valid. Check the words and their order.");
     }
-    setPhrase("");
-    setEntropy(imported);
     setError("");
-    setMode("schemes");
+    // A retry parses the phrase again, so the entropy needn't outlive this attempt.
+    try {
+      await save(imported);
+    } finally {
+      imported.fill(0);
+    }
   }
 
   if (mode === "choose") {
@@ -108,30 +111,8 @@ export function Onboarding({ onDone }: { onDone: (account: Account) => void }) {
           <input type="checkbox" checked={wroteItDown} onChange={(e) => setWroteItDown(e.target.checked)} />
           I've written down my recovery phrase
         </label>
-        <button className="btn btn-primary spacer" disabled={!wroteItDown} onClick={() => setMode("schemes")}>
-          Continue
-        </button>
-      </div>
-    );
-  }
-
-  if (mode === "schemes" && entropy) {
-    const toggle = (s: Scheme) => setSchemes((on) => (on.includes(s) ? on.filter((x) => x !== s) : [...on, s]));
-    return (
-      <div className="screen">
-        <Header title="Signature schemes" onBack={() => go("choose")} />
-        <p className="hint">Every transaction needs a signature from each scheme you turn on. You can change them later.</p>
-        <div>
-          {SCHEMES.map((s) => (
-            <label key={s} className="toggle-row">
-              <SchemeChip scheme={s} />
-              <input type="checkbox" className="switch" checked={schemes.includes(s)} onChange={() => toggle(s)} />
-            </label>
-          ))}
-        </div>
-        {schemes.length === 0 && <p className="error">Turn on at least one scheme.</p>}
         {error && <p className="error">{error}</p>}
-        <button className="btn btn-primary spacer" disabled={busy || schemes.length === 0} onClick={() => save(entropy)}>
+        <button className="btn btn-primary spacer" disabled={busy || !wroteItDown} onClick={() => save(entropy)}>
           {busy ? "Creating…" : "Create wallet"}
         </button>
       </div>
