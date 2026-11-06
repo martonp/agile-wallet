@@ -16,12 +16,13 @@ type Props = {
   onSelect: (index: number) => void;
   onAddAccount: () => void;
   onSend: () => void;
+  onReceive: () => void;
   onSchemes: () => void;
   onSettings: () => void;
   onLock: () => void;
 };
 
-export function Account({ index, notice, onSelect, onAddAccount, onSend, onSchemes, onSettings, onLock }: Props) {
+export function Account({ index, notice, onSelect, onAddAccount, onSend, onReceive, onSchemes, onSettings, onLock }: Props) {
   const [account, setAccount] = useState<AccountData>();
   const [state, setState] = useState<AccountState>();
   const [error, setError] = useState("");
@@ -123,8 +124,8 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onSchem
         <button className="btn btn-primary" onClick={onSend}>
           Send
         </button>
-        <button className="btn btn-secondary" onClick={copy} disabled={!state}>
-          {copied ? "Address copied" : "Receive"}
+        <button className="btn btn-secondary" onClick={onReceive}>
+          Receive
         </button>
       </div>
       <div>

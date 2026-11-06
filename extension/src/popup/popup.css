@@ -311,3 +311,11 @@ textarea {
   text-transform: uppercase;
   color: var(--muted);
 }
+
+.qr {
+  width: 200px;
+  height: 200px;
+  align-self: center;
+  border-radius: 8px;
+  shape-rendering: crispEdges;
+}

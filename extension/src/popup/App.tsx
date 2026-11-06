@@ -9,8 +9,9 @@ import { Send } from "./screens/Send";
 import { ChangeSchemes } from "./screens/ChangeSchemes";
 import { Settings } from "./screens/Settings";
 import { AddAccount } from "./screens/AddAccount";
+import { Receive } from "./screens/Receive";
 
-type Screen = "onboarding" | "unlock" | "account" | "send" | "schemes" | "settings" | "addAccount";
+type Screen = "onboarding" | "unlock" | "account" | "send" | "receive" | "schemes" | "settings" | "addAccount";
 
 // The selected account is read here once and handed to each screen, so a screen keeps acting for the account it
 // opened with even if another popup switches accounts meanwhile.
@@ -60,6 +61,7 @@ export function App() {
           onSelect={select}
           onAddAccount={() => go("addAccount")}
           onSend={() => go("send")}
+          onReceive={() => go("receive")}
           onSchemes={() => go("schemes")}
           onSettings={() => go("settings")}
           onLock={() => go("unlock")}
@@ -67,6 +69,8 @@ export function App() {
       );
     case "send":
       return <Send index={index} onBack={toAccount} />;
+    case "receive":
+      return <Receive index={index} onBack={toAccount} />;
     case "schemes":
       return <ChangeSchemes index={index} onBack={toAccount} />;
     case "addAccount":
