@@ -3,7 +3,7 @@ import { type Address, isAddress, parseEther } from "viem";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { SendProgress, type Tracker } from "../components/SendProgress";
-import { shortAddress } from "../mock";
+import { shortAddress } from "../format";
 import { type Account, type AccountState, accountState, formatEth, loadAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
 import { type Progress, type Sent, sendTransfer } from "../../wallet/transaction";

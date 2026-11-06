@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { IconCheck, IconCopy, IconLock, IconSettings } from "@tabler/icons-react";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
-import { shortAddress } from "../mock";
+import { shortAddress } from "../format";
 import { SCHEMES } from "../schemes";
 import { type Account as AccountData, type AccountState, accountState, formatEth, loadAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
