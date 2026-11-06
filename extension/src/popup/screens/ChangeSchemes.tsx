@@ -3,14 +3,15 @@ import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { SendProgress, type Tracker } from "../components/SendProgress";
 import { SCHEMES, SCHEME_INFO, type Scheme } from "../schemes";
-import { type Account, loadAccount, syncAccount } from "../../wallet/account";
+import { type Account, accountState, loadAccount, syncAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
-import { type Progress, changeSchemes } from "../../wallet/transaction";
+import { type Progress, changeSchemes, changeSchemesBeforeDeployment } from "../../wallet/transaction";
 import { explain } from "../../wallet/errors";
 
 
 export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => void }) {
   const [account, setAccount] = useState<Account>();
+  const [deployed, setDeployed] = useState<boolean>(); // undefined until known; before deployment, no transaction
   const [next, setNext] = useState<Scheme[]>([]);
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -20,9 +21,11 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
 
   useEffect(() => {
     (async () => {
-      const loaded = await syncAccount(await loadNetwork(), index).catch(() => loadAccount(index));
+      const network = await loadNetwork();
+      const loaded = await syncAccount(network, index).catch(() => loadAccount(index));
       setAccount(loaded);
       setNext(loaded?.schemes.map((s) => s.scheme) ?? []);
+      if (loaded) setDeployed(await accountState(network, loaded).then((s) => s.deployed, () => undefined));
     })();
   }, []);
 
@@ -31,6 +34,9 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
   const changed = SCHEMES.some((s) => current.includes(s) !== next.includes(s));
   // setSchemes needs signatures from every scheme on before or after the change.
   const signers = SCHEMES.filter((s) => current.includes(s) || next.includes(s));
+  // Before deployment only an added scheme needs the password, to derive its public key.
+  const adding = next.some((s) => !current.includes(s));
+  const needsPassword = deployed !== false || adding;
 
   async function onProgress(progress: Progress) {
     switch (progress.type) {
@@ -52,6 +58,7 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
     setDone("");
     setTracker(undefined);
     setBusy(true);
+    if (deployed === false) return saveBeforeDeployment(account);
     try {
       const sent = await changeSchemes(password, account, next, onProgress);
       setTracker((t) => t && { ...t, phase: "done", block: sent.block, ok: sent.ok });
@@ -66,6 +73,22 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
     } catch (e) {
       setTracker((t) => t && { ...t, failed: true });
       setError(explain(e));
+    } finally {
+      setPassword("");
+      setBusy(false);
+    }
+  }
+
+  async function saveBeforeDeployment(account: Account) {
+    try {
+      const updated = await changeSchemesBeforeDeployment(password, account, next);
+      setAccount(updated);
+      setNext(updated.schemes.map((s) => s.scheme));
+      setDone("Saved. Your first transaction deploys the wallet with these schemes.");
+    } catch (e) {
+      setError(explain(e));
+      // Deployed from elsewhere meanwhile: from now on, a change takes a transaction.
+      setDeployed(await accountState(await loadNetwork(), account).then((s) => s.deployed, () => deployed));
     } finally {
       setPassword("");
       setBusy(false);
@@ -88,6 +111,13 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
         <SendProgress tracker={tracker} />
       ) : next.length === 0 ? (
         <p className="error">Keep at least one scheme.</p>
+      ) : deployed === false ? (
+        changed && (
+          <p className="hint">
+            This wallet isn't deployed yet, so the change is just saved here: no transaction, no fee. Your first
+            transaction deploys it with these schemes.
+          </p>
+        )
       ) : (
         changed && (
           <div className="warning">
@@ -97,13 +127,21 @@ export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => 
         )
       )}
       <div className="spacer">
-        <p className="label">Password</p>
-        <input className="field" type="password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} />
+        {needsPassword && (
+          <>
+            <p className="label">Password</p>
+            <input className="field" type="password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} />
+          </>
+        )}
       </div>
       {error && <p className="error check-lines">{error}</p>}
       {done && <p className="hint">{done}</p>}
-      <button className="btn btn-primary" disabled={busy || !password || !changed || next.length === 0} onClick={apply}>
-        {busy ? "Applying…" : "Sign and apply"}
+      <button
+        className="btn btn-primary"
+        disabled={busy || deployed === undefined || (needsPassword && !password) || !changed || next.length === 0}
+        onClick={apply}
+      >
+        {busy ? "Applying…" : deployed === false ? "Save" : "Sign and apply"}
       </button>
     </div>
   );

@@ -233,6 +233,40 @@ export async function changeSchemes(password: string, account: Account, next: Sc
   return sent;
 }
 
+// Before deployment the scheme list exists only here: the address depends on the owner alone, and the factory takes
+// whatever list the first transaction carries. So a change is just saved, with no transaction, fee or signatures.
+// The password is needed only to derive the public keys of schemes being added. Refuses if the wallet has been
+// deployed meanwhile (from another device, say), since then the change takes a transaction.
+export async function changeSchemesBeforeDeployment(password: string, account: Account, next: Scheme[]): Promise<Account> {
+  const chosen = SCHEMES.filter((s) => next.includes(s));
+  if (chosen.length === 0) throw new Error("Keep at least one scheme");
+  if ((await accountState(await loadNetwork(), account)).deployed) {
+    throw new Error("The wallet has been deployed since this screen opened, so changing its schemes now takes a transaction.");
+  }
+  const added = chosen.filter((s) => !account.schemes.some((c) => c.scheme === s));
+  const publicKeys: Partial<Record<Scheme, string>> = {};
+  if (added.length > 0) {
+    await withSigningKeys(
+      password,
+      ["ecdsa", ...added],
+      async (keys) => {
+        if ((await publicKeyOf("ecdsa", keys)).toLowerCase() !== account.owner.toLowerCase()) {
+          throw new Error("These keys aren't this account's: its owner doesn't match");
+        }
+        for (const scheme of added) publicKeys[scheme] = await publicKeyOf(scheme, keys);
+      },
+      account.index,
+    );
+  }
+  const schemes = chosen.map((scheme) => ({
+    scheme,
+    publicKey: account.schemes.find((c) => c.scheme === scheme)?.publicKey ?? publicKeys[scheme]!,
+  }));
+  const updated = { ...account, schemes };
+  await saveAccount(updated);
+  return updated;
+}
+
 // Signs once with the account's keys (and `extraKeys`, which `plan` may use), at fixed gas limits, and sends the
 // transaction through the VPR mempool, which simulates it before accepting it.
 async function submit(
