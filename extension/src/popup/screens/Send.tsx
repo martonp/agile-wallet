@@ -6,7 +6,7 @@ import { type Safeguards, SchemeChoices, choicesChanged, ruleChoices, safeguards
 import type { Tracker } from "../components/SendProgress";
 import { Submission } from "../components/Submission";
 import { shortAddress } from "../format";
-import { type Account, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
+import { type Account, type AccountState, accountState, formatEth, loadAccount, raisedRules, syncAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
 import type { Scheme } from "../schemes";
 import { type Progress, type Sent, changeSchemesBeforeDeployment, sendTransfer, transferFee } from "../../wallet/transaction";
@@ -79,6 +79,9 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
   }
 
   const undeployed = state?.deployed === false;
+  // A raised safeguard's backup signs every transaction too, as on the Account screen.
+  const raised = account && state ? raisedRules(account, state.signals) : [];
+  const signers = [...new Set([...(account?.schemes.map((s) => s.scheme) ?? []), ...raised.map((r) => r.scheme)])];
   // Only a first send changes the wallet's setup; a deployed wallet's goes through Change Schemes.
   const changed = undeployed && choicesChanged(account, schemes, safeguards);
 
@@ -226,8 +229,8 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
           <>
             <p className="label">Signed with</p>
             <div className="chips">
-              {account?.schemes.map((s) => (
-                <SchemeChip key={s.scheme} scheme={s.scheme} />
+              {signers.map((scheme) => (
+                <SchemeChip key={scheme} scheme={scheme} />
               ))}
             </div>
           </>
