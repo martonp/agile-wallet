@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { IconShieldLock } from "@tabler/icons-react";
 import { Header } from "../components/Header";
+import { SchemeChip } from "../components/SchemeChip";
+import { SCHEMES, type Scheme } from "../schemes";
 import { createWallet } from "../../wallet/keyring";
 import { entropyToPhrase, generateEntropy, phraseToEntropy } from "../../wallet/mnemonic";
 
 const MIN_PASSWORD = 8;
 
-type Mode = "choose" | "create" | "import" | "backup";
+type Mode = "choose" | "create" | "import" | "backup" | "schemes";
 
 export function Onboarding({ onDone }: { onDone: () => void }) {
   const [mode, setMode] = useState<Mode>("choose");
@@ -15,6 +17,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [phrase, setPhrase] = useState("");
   const [entropy, setEntropy] = useState<Uint8Array>();
   const [wroteItDown, setWroteItDown] = useState(false);
+  const [schemes, setSchemes] = useState<Scheme[]>(SCHEMES);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -31,13 +34,16 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
     return "";
   }
 
+  // On failure the entropy stays for a retry; zeroed, it would make a wallet of zero bytes.
   async function save(secret: Uint8Array) {
     setBusy(true);
     try {
-      await createWallet(password, secret);
-      onDone();
-    } finally {
+      await createWallet(password, secret, schemes);
       secret.fill(0);
+      onDone();
+    } catch {
+      setError("Couldn't create the wallet. Try again.");
+    } finally {
       setBusy(false);
     }
   }
@@ -58,7 +64,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       return setError("That recovery phrase isn't valid. Check the words and their order.");
     }
     setPhrase("");
-    void save(imported);
+    setEntropy(imported);
+    setError("");
+    setMode("schemes");
   }
 
   if (mode === "choose") {
@@ -95,8 +103,31 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
           <input type="checkbox" checked={wroteItDown} onChange={(e) => setWroteItDown(e.target.checked)} />
           I've written down my recovery phrase
         </label>
-        <button className="btn btn-primary spacer" disabled={!wroteItDown || busy} onClick={() => save(entropy)}>
-          {busy ? "Encrypting…" : "Create wallet"}
+        <button className="btn btn-primary spacer" disabled={!wroteItDown} onClick={() => setMode("schemes")}>
+          Continue
+        </button>
+      </div>
+    );
+  }
+
+  if (mode === "schemes" && entropy) {
+    const toggle = (s: Scheme) => setSchemes((on) => (on.includes(s) ? on.filter((x) => x !== s) : [...on, s]));
+    return (
+      <div className="screen">
+        <Header title="Signature schemes" onBack={() => go("choose")} />
+        <p className="hint">Every transaction needs a signature from each scheme you turn on. You can change them later.</p>
+        <div>
+          {SCHEMES.map((s) => (
+            <label key={s} className="toggle-row">
+              <SchemeChip scheme={s} />
+              <input type="checkbox" className="switch" checked={schemes.includes(s)} onChange={() => toggle(s)} />
+            </label>
+          ))}
+        </div>
+        {schemes.length === 0 && <p className="error">Turn on at least one scheme.</p>}
+        {error && <p className="error">{error}</p>}
+        <button className="btn btn-primary spacer" disabled={busy || schemes.length === 0} onClick={() => save(entropy)}>
+          {busy ? "Creating…" : "Create wallet"}
         </button>
       </div>
     );
