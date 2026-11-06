@@ -5,6 +5,8 @@ import react from "@vitejs/plugin-react";
 // public/manifest.json is copied to dist/ as is; load dist/ as an unpacked extension.
 export default defineConfig({
   plugins: [react()],
+  // zknox-falcon is a linked CommonJS package; linked packages are not pre-bundled unless listed.
+  optimizeDeps: { include: ["zknox-falcon"] },
   build: {
     outDir: "dist",
     emptyOutDir: true,

@@ -1,0 +1,8 @@
+{
+  "name": "zknox-falcon",
+  "private": true,
+  "version": "0.0.0",
+  "description": "ZKNOX's prebuilt falcon.js (Emscripten, CommonJS), linked from the pinned ETHFALCON submodule",
+  "main": "falcon.js",
+  "types": "falcon.d.ts"
+}

@@ -15,7 +15,8 @@
     "@scure/bip39": "^2.4.0",
     "@tabler/icons-react": "^3.50.0",
     "react": "^19.3.1",
-    "react-dom": "^19.3.1"
+    "react-dom": "^19.3.1",
+    "zknox-falcon": "file:vendor/zknox-falcon"
   },
   "devDependencies": {
     "@types/chrome": "^0.3.7",
