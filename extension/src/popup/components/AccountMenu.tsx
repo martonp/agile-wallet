@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { IconCheck, IconChevronDown, IconPencil, IconPlus } from "@tabler/icons-react";
+import { IconCheck, IconChevronDown, IconPencil, IconPlus, IconX } from "@tabler/icons-react";
 import { shortAddress } from "../format";
 import { type Account, listAccounts, renameAccount, walletAddress } from "../../wallet/account";
 import "./AccountMenu.css";
 
 type Props = { current: Account; onSelect: (index: number) => void; onAdd: () => void; onRenamed: () => void };
 
-// The account's name as a menu: every account of the wallet, then "Add account".
+// The account's name as a menu (every account of the wallet, then "Add account"), with a pencil beside it that
+// turns the name into a field to rename the account in place.
 export function AccountMenu({ current, onSelect, onAdd, onRenamed }: Props) {
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState<string>(); // the name being typed, while renaming
@@ -17,12 +18,8 @@ export function AccountMenu({ current, onSelect, onAdd, onRenamed }: Props) {
     if (!open) return;
     listAccounts().then(setAccounts);
     // Closes on a click outside the menu, or Escape.
-    const close = () => {
-      setOpen(false);
-      setRenaming(undefined);
-    };
-    const onPointer = (e: PointerEvent) => menu.current?.contains(e.target as Node) || close();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
+    const onPointer = (e: PointerEvent) => menu.current?.contains(e.target as Node) || setOpen(false);
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("pointerdown", onPointer);
     document.addEventListener("keydown", onKey);
     return () => {
@@ -34,8 +31,35 @@ export function AccountMenu({ current, onSelect, onAdd, onRenamed }: Props) {
   async function rename() {
     await renameAccount(current.index, renaming ?? "");
     setRenaming(undefined);
-    setOpen(false);
     onRenamed();
+  }
+
+  if (renaming !== undefined) {
+    return (
+      <form
+        className="account-rename"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void rename();
+        }}
+      >
+        <input
+          className="field"
+          value={renaming}
+          autoFocus
+          maxLength={32}
+          aria-label="Account name"
+          onChange={(e) => setRenaming(e.target.value)}
+          onKeyDown={(e) => e.key === "Escape" && setRenaming(undefined)}
+        />
+        <button className="icon-button" type="submit" aria-label="Save name">
+          <IconCheck size={16} />
+        </button>
+        <button className="icon-button" type="button" aria-label="Cancel renaming" onClick={() => setRenaming(undefined)}>
+          <IconX size={16} />
+        </button>
+      </form>
+    );
   }
 
   return (
@@ -43,6 +67,16 @@ export function AccountMenu({ current, onSelect, onAdd, onRenamed }: Props) {
       <button className="account-menu-title" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
         {current.name}
         <IconChevronDown size={16} aria-hidden />
+      </button>
+      <button
+        className="icon-button"
+        aria-label="Rename account"
+        onClick={() => {
+          setOpen(false);
+          setRenaming(current.name);
+        }}
+      >
+        <IconPencil size={14} />
       </button>
       {open && (
         <div className="account-menu-list" role="menu">
@@ -63,25 +97,6 @@ export function AccountMenu({ current, onSelect, onAdd, onRenamed }: Props) {
               {account.index === current.index && <IconCheck size={14} aria-label="Selected" />}
             </button>
           ))}
-          {renaming === undefined ? (
-            <button className="account-menu-item" role="menuitem" onClick={() => setRenaming(current.name)}>
-              <span>Rename {current.name}</span>
-              <IconPencil size={14} aria-hidden />
-            </button>
-          ) : (
-            <form
-              className="account-menu-rename"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void rename();
-              }}
-            >
-              <input className="field" value={renaming} autoFocus maxLength={32} onChange={(e) => setRenaming(e.target.value)} />
-              <button className="btn btn-primary" type="submit">
-                Save
-              </button>
-            </form>
-          )}
           <button className="account-menu-item" role="menuitem" onClick={onAdd}>
             <span>Add account</span>
             <IconPlus size={14} aria-hidden />
