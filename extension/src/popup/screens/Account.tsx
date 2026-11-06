@@ -4,7 +4,7 @@ import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { shortAddress } from "../format";
 import { SCHEMES } from "../schemes";
-import { type Account as AccountData, type AccountState, accountState, formatEth, loadAccount } from "../../wallet/account";
+import { type Account as AccountData, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
 
 type Props = { onSend: () => void; onSchemes: () => void; onSettings: () => void; onLock: () => void };
@@ -21,15 +21,24 @@ export function Account({ onSend, onSchemes, onSettings, onLock }: Props) {
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     (async () => {
-      const loaded = await loadAccount();
-      if (stopped) return;
-      setAccount(loaded);
-      if (!loaded) return;
       const network = await loadNetwork();
+      let current = await syncAccount(network).catch(() => loadAccount());
+      if (stopped) return;
+      setAccount(current);
+      if (!current) return;
       const refresh = async () => {
         try {
-          const next = await accountState(network, loaded);
+          let next = await accountState(network, current!);
+          // A scheme change can land while the screen is open, after the popup that sent it closed.
+          if (!next.schemesMatch) {
+            const synced = await syncAccount(network);
+            if (synced && synced !== current) {
+              current = synced;
+              next = await accountState(network, current);
+            }
+          }
           if (stopped) return;
+          setAccount(current);
           setState(next);
           setError("");
         } catch {
@@ -78,6 +87,9 @@ export function Account({ onSend, onSchemes, onSettings, onLock }: Props) {
         {state && !state.deployed && <p className="hint">Not deployed yet: your first transaction deploys it.</p>}
       </div>
       {error && <p className="error">{error}</p>}
+      {state && !state.schemesMatch && (
+        <div className="warning">The schemes saved here aren't this wallet's schemes on chain, so its transactions will fail.</div>
+      )}
       <div className="row">
         <button className="btn btn-primary" onClick={onSend}>
           Send

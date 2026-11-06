@@ -3,7 +3,8 @@ import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { SendProgress, type Tracker } from "../components/SendProgress";
 import { SCHEMES, SCHEME_INFO, type Scheme } from "../schemes";
-import { type Account, loadAccount } from "../../wallet/account";
+import { type Account, loadAccount, syncAccount } from "../../wallet/account";
+import { loadNetwork } from "../../wallet/network";
 import { type Progress, changeSchemes } from "../../wallet/transaction";
 import { WrongPasswordError } from "../../wallet/vault";
 
@@ -20,10 +21,11 @@ export function ChangeSchemes({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    loadAccount().then((loaded) => {
+    (async () => {
+      const loaded = await syncAccount(await loadNetwork()).catch(() => loadAccount());
       setAccount(loaded);
       setNext(loaded?.schemes.map((s) => s.scheme) ?? []);
-    });
+    })();
   }, []);
 
   const current = account?.schemes.map((s) => s.scheme) ?? [];

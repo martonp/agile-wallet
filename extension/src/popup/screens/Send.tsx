@@ -4,7 +4,7 @@ import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
 import { SendProgress, type Tracker } from "../components/SendProgress";
 import { shortAddress } from "../format";
-import { type Account, type AccountState, accountState, formatEth, loadAccount } from "../../wallet/account";
+import { type Account, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
 import { type Progress, type Sent, sendTransfer } from "../../wallet/transaction";
 import { WrongPasswordError } from "../../wallet/vault";
@@ -25,9 +25,10 @@ export function Send({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     (async () => {
-      const loaded = await loadAccount();
+      const network = await loadNetwork();
+      const loaded = await syncAccount(network).catch(() => loadAccount());
       setAccount(loaded);
-      if (loaded) setState(await accountState(await loadNetwork(), loaded).catch(() => undefined));
+      if (loaded) setState(await accountState(network, loaded).catch(() => undefined));
     })();
   }, []);
 
