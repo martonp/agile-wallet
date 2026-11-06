@@ -21,6 +21,10 @@ interface IAgileWalletFactory {
 contract Deploy is Script {
     address private constant CREATE2_PROXY = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
     bytes32 private constant SALT = bytes32(0);
+    /// Where the signal lands; mempools list it by this address (sidecar breakSignals.ts, docs/VPR.md).
+    address private constant LISTED_SIGNAL = 0x108c7aD6Dd81EA131A761B3Db9F817056D26941c;
+    /// The devnet cryptographer: Anvil/Hardhat test account #1, a public test key. Fund it before it signals.
+    address private constant CRYPTOGRAPHER = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
 
     function run() external {
         bytes memory f1600 = vm.parseBytes(vm.readFile("lib/ETHFALCON/test/f1600_zknox.hex"));
@@ -35,6 +39,14 @@ contract Deploy is Script {
         address falcon = _deploy(abi.encodePacked(vm.getCode("FalconVerifier.sol:FalconVerifier"), abi.encode(falcon8)));
         address sphincs = _deploy(abi.encodePacked(vm.getCode("SphincsVerifier.sol:SphincsVerifier"), abi.encode(sphincsC13)));
         address factory = _deploy(vm.getCode("AgileWalletFactory.sol:AgileWalletFactory"));
+        // The break signal mempools list by address, so its constructor arguments stay fixed.
+        address ecdsaBreakSignal = _deploy(
+            abi.encodePacked(
+                vm.getCode("BreakSignal.sol:BreakSignal"), abi.encode(CRYPTOGRAPHER, "Quantum computers break ECDSA")
+            )
+        );
+        // Its code includes the metadata hash, so any edit to BreakSignal.sol or the compiler settings moves it.
+        require(ecdsaBreakSignal == LISTED_SIGNAL, "signal moved: update the sidecar's listing and docs/VPR.md");
         vm.stopBroadcast();
 
         string memory o = "deployment";
@@ -44,6 +56,7 @@ contract Deploy is Script {
         vm.serializeAddress(o, "falconVerifier", falcon);
         vm.serializeAddress(o, "sphincsVerifier", sphincs);
         vm.serializeAddress(o, "factory", factory);
+        vm.serializeAddress(o, "ecdsaBreakSignal", ecdsaBreakSignal);
         string memory json = vm.serializeAddress(o, "implementation", IAgileWalletFactory(factory).implementation());
         vm.writeJson(json, string.concat("deployments/", vm.toString(block.chainid), ".json"));
     }
