@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { IconArrowLeft } from "@tabler/icons-react";
 
-export function Header({ title, onBack, children }: { title: string; onBack?: () => void; children?: ReactNode }) {
+export function Header({ title, onBack, children }: { title: ReactNode; onBack?: () => void; children?: ReactNode }) {
   return (
     <div className="header">
       <span className="row" style={{ alignItems: "center" }}>

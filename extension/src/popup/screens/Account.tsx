@@ -1,15 +1,24 @@
 import { useEffect, useState } from "react";
 import { IconCheck, IconCopy, IconLock, IconSettings } from "@tabler/icons-react";
 import { SchemeChip } from "../components/SchemeChip";
+import { AccountMenu } from "../components/AccountMenu";
 import { Header } from "../components/Header";
 import { shortAddress } from "../format";
 import { SCHEMES } from "../schemes";
 import { type Account as AccountData, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
 
-type Props = { onSend: () => void; onSchemes: () => void; onSettings: () => void; onLock: () => void };
+type Props = {
+  index: number;
+  onSelect: (index: number) => void;
+  onAddAccount: () => void;
+  onSend: () => void;
+  onSchemes: () => void;
+  onSettings: () => void;
+  onLock: () => void;
+};
 
-export function Account({ onSend, onSchemes, onSettings, onLock }: Props) {
+export function Account({ index, onSelect, onAddAccount, onSend, onSchemes, onSettings, onLock }: Props) {
   const [account, setAccount] = useState<AccountData>();
   const [state, setState] = useState<AccountState>();
   const [error, setError] = useState("");
@@ -22,7 +31,7 @@ export function Account({ onSend, onSchemes, onSettings, onLock }: Props) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     (async () => {
       const network = await loadNetwork();
-      let current = await syncAccount(network).catch(() => loadAccount());
+      let current = await syncAccount(network, index).catch(() => loadAccount(index));
       if (stopped) return;
       setAccount(current);
       if (!current) return;
@@ -31,7 +40,7 @@ export function Account({ onSend, onSchemes, onSettings, onLock }: Props) {
           let next = await accountState(network, current!);
           // A scheme change can land while the screen is open, after the popup that sent it closed.
           if (!next.schemesMatch) {
-            const synced = await syncAccount(network);
+            const synced = await syncAccount(network, index);
             if (synced && synced !== current) {
               current = synced;
               next = await accountState(network, current);
@@ -53,7 +62,7 @@ export function Account({ onSend, onSchemes, onSettings, onLock }: Props) {
       stopped = true;
       clearTimeout(timer);
     };
-  }, []);
+  }, [index]);
 
   async function copy() {
     if (!state) return;
@@ -65,7 +74,7 @@ export function Account({ onSend, onSchemes, onSettings, onLock }: Props) {
   const schemes = account?.schemes.map((s) => s.scheme) ?? [];
   return (
     <div className="screen">
-      <Header title="Account 1">
+      <Header title={account ? <AccountMenu current={account} onSelect={onSelect} onAdd={onAddAccount} /> : ""}>
         <span className="row">
           <button className="icon-button" onClick={onSettings} aria-label="Network settings">
             <IconSettings size={18} />

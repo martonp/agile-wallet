@@ -10,6 +10,7 @@ mempool in which post-quantum signature checks fit the validation budget, withou
 **One seed, many keys.** The extension keeps one 24-word mnemonic and derives every key from it:
 ECDSA with BIP-32 (`m/44'/60'/a'/0/i`), Falcon and SPHINCS- from
 `HMAC-SHA512(seed, "agile-wallet/<label>/" ‖ a ‖ i)` with the labels `falcon-512` and `sphincs`.
+Each account is one `a` (hardened in BIP-32) with `i = 0`, so every account has its own keys and wallet.
 
 **The account.** `AgileWallet` holds a list of schemes, each a verifier contract plus a public key
 (or native ECDSA: an address), and stores only the list's hash. A transaction carries the list and

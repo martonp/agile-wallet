@@ -1,0 +1,50 @@
+.account-menu {
+  position: relative;
+}
+
+.account-menu-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-menu-list {
+  position: absolute;
+  top: 26px;
+  left: 0;
+  z-index: 10;
+  width: 260px;
+  padding: 6px;
+  border: 0.5px solid var(--field-border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+}
+
+.account-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.account-menu-item:hover {
+  background: var(--line);
+}
+
+.account-menu-address {
+  display: block;
+  color: var(--muted);
+}

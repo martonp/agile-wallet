@@ -11,7 +11,7 @@ import { WrongPasswordError } from "../../wallet/vault";
 // Resolves once the browser has painted: a signer then blocks the thread only after its "signing…" is on screen.
 const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 
-export function ChangeSchemes({ onBack }: { onBack: () => void }) {
+export function ChangeSchemes({ index, onBack }: { index: number; onBack: () => void }) {
   const [account, setAccount] = useState<Account>();
   const [next, setNext] = useState<Scheme[]>([]);
   const [password, setPassword] = useState("");
@@ -22,7 +22,7 @@ export function ChangeSchemes({ onBack }: { onBack: () => void }) {
 
   useEffect(() => {
     (async () => {
-      const loaded = await syncAccount(await loadNetwork()).catch(() => loadAccount());
+      const loaded = await syncAccount(await loadNetwork(), index).catch(() => loadAccount(index));
       setAccount(loaded);
       setNext(loaded?.schemes.map((s) => s.scheme) ?? []);
     })();
@@ -59,7 +59,7 @@ export function ChangeSchemes({ onBack }: { onBack: () => void }) {
       const sent = await changeSchemes(password, account, next, onProgress);
       setTracker((t) => t && { ...t, phase: "done", block: sent.block, ok: sent.ok });
       if (sent.ok) {
-        const updated = await loadAccount();
+        const updated = await loadAccount(index);
         setAccount(updated);
         setNext(updated?.schemes.map((s) => s.scheme) ?? []);
         setDone(`Every transaction now needs ${next.length === 1 ? "this signature" : "these signatures"}.`);

@@ -12,7 +12,7 @@ import { WrongPasswordError } from "../../wallet/vault";
 // Resolves once the browser has painted: a signer then blocks the thread only after its "signing…" is on screen.
 const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 
-export function Send({ onBack }: { onBack: () => void }) {
+export function Send({ index, onBack }: { index: number; onBack: () => void }) {
   const [account, setAccount] = useState<Account>();
   const [state, setState] = useState<AccountState>();
   const [to, setTo] = useState("");
@@ -26,7 +26,7 @@ export function Send({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     (async () => {
       const network = await loadNetwork();
-      const loaded = await syncAccount(network).catch(() => loadAccount());
+      const loaded = await syncAccount(network, index).catch(() => loadAccount(index));
       setAccount(loaded);
       if (loaded) setState(await accountState(network, loaded).catch(() => undefined));
     })();
