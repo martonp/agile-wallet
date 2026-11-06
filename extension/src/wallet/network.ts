@@ -1,3 +1,4 @@
+import { explain } from "./errors";
 import { rpc } from "./rpc";
 import type { Scheme } from "./schemes";
 
@@ -64,7 +65,7 @@ export async function checkNetwork(network: Network): Promise<{ ok: boolean; lin
       lines.push(`${label}: ${await run()}`);
     } catch (e) {
       ok = false;
-      lines.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+      lines.push(`${label}: ${explain(e)}`);
     }
   };
   const chainId = (url: string) => rpc<string>(url, "eth_chainId").then((id) => `chain ${BigInt(id)}`);

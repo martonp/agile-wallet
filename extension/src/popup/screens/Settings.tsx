@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Header } from "../components/Header";
+import { explain } from "../../wallet/errors";
 import {
   LABELS,
   LOCAL_DEVNET,
@@ -32,7 +33,7 @@ export function Settings({ onBack }: { onBack: () => void }) {
       if (!(await requestHostAccess(network!))) return setResult({ error: "Chrome didn't grant access to these hosts." });
       await run();
     } catch (e) {
-      setResult({ error: e instanceof Error ? e.message : String(e) });
+      setResult({ error: explain(e) });
     } finally {
       setBusy(false);
     }

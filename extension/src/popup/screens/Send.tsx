@@ -7,7 +7,7 @@ import { shortAddress } from "../format";
 import { type Account, type AccountState, accountState, formatEth, loadAccount, syncAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
 import { type Progress, type Sent, sendTransfer, transferFee } from "../../wallet/transaction";
-import { WrongPasswordError } from "../../wallet/vault";
+import { explain } from "../../wallet/errors";
 
 
 export function Send({ index, onBack }: { index: number; onBack: () => void }) {
@@ -81,7 +81,7 @@ export function Send({ index, onBack }: { index: number; onBack: () => void }) {
       setFee(await transferFee(account).then((f) => f.maxFee, () => fee));
     } catch (e) {
       setTracker((t) => t && { ...t, failed: true });
-      setError(e instanceof WrongPasswordError ? "Wrong password. Try again." : e instanceof Error ? e.message : String(e));
+      setError(explain(e));
     } finally {
       setPassword("");
       setBusy(false);

@@ -5,7 +5,7 @@ import { SCHEMES, type Scheme } from "../schemes";
 import { accountCount } from "../../wallet/account";
 import { addAccount } from "../../wallet/keyring";
 import { loadNetwork } from "../../wallet/network";
-import { WrongPasswordError } from "../../wallet/vault";
+import { explain } from "../../wallet/errors";
 
 // The next account of the same recovery phrase: its own keys and wallet address.
 export function AddAccount({ onBack, onDone }: { onBack: () => void; onDone: (index: number) => void }) {
@@ -28,7 +28,7 @@ export function AddAccount({ onBack, onDone }: { onBack: () => void; onDone: (in
       const account = await addAccount(password, name.trim() || "Account", schemes, await loadNetwork());
       onDone(account.index);
     } catch (e) {
-      setError(e instanceof WrongPasswordError ? "Wrong password. Try again." : e instanceof Error ? e.message : String(e));
+      setError(explain(e));
       setPassword("");
     } finally {
       setBusy(false);
