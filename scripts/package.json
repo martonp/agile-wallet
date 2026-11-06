@@ -1,0 +1,10 @@
+{
+  "name": "agile-wallet-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Devnet scripts: verifier gas measurement and the end-to-end VPR demo",
+  "dependencies": {
+    "@forshtat/hegota-support": "0.0.1",
+    "viem": "2.57.7"
+  }
+}
