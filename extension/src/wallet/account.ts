@@ -10,26 +10,53 @@ import { sphincsPublicKey } from "./sphincs";
 
 // What the extension keeps in the clear: nothing here is secret. The verifiers' addresses are in VERIFIERS.
 export interface Account {
+  index: number; // the account level of every key's derivation (README.md, "One seed, many keys")
+  name: string;
   owner: string; // the ECDSA address that authorises the wallet's deployment, and fixes its address
   schemes: { scheme: Scheme; publicKey: string }[]; // in SCHEMES order; ECDSA's public key is its address
 }
 
-const KEY = "account";
-const PENDING_KEY = "pendingSchemes";
+// Each account under its own key, so a write to one never touches another: account 0 at "account", then
+// "account:1", "account:2", ... The index is the key, not a stored field.
+const keyOf = (base: string, index: number) => (index === 0 ? base : `${base}:${index}`);
+const COUNT_KEY = "accountCount";
+const SELECTED_KEY = "selectedAccount";
 
-// The account of `seed` with the chosen schemes. The owner is always the ECDSA key, whether or not ECDSA is one of
-// the schemes.
-export async function deriveAccount(seed: Uint8Array, schemes: Scheme[]): Promise<Account> {
-  const chosen = SCHEMES.filter((s) => schemes.includes(s));
-  if (chosen.length === 0) throw new Error("Choose at least one scheme");
-  const keys = deriveSigningKeys(seed, ["ecdsa", ...chosen]);
+// Account `index` of `seed`, with the chosen schemes, or, if its wallet is already on chain, with the schemes the
+// wallet has. The owner is always the ECDSA key, whether or not ECDSA is one of the schemes.
+export async function deriveAccount(
+  seed: Uint8Array,
+  schemes: Scheme[],
+  index = 0,
+  name = `Account ${index + 1}`,
+  network?: Network,
+): Promise<Account> {
+  const keys = deriveSigningKeys(seed, SCHEMES, index); // all of them: any could be on chain
   try {
-    const out: Account["schemes"] = [];
-    for (const scheme of chosen) out.push({ scheme, publicKey: await publicKeyOf(scheme, keys) });
-    return { owner: await publicKeyOf("ecdsa", keys), schemes: out };
+    const all: Account["schemes"] = [];
+    for (const scheme of SCHEMES) all.push({ scheme, publicKey: await publicKeyOf(scheme, keys) });
+    const owner = all.find((s) => s.scheme === "ecdsa")!.publicKey;
+    const onchain = network && (await recoverSchemes(network, owner, all).catch(() => undefined));
+    const chosen = onchain ?? all.filter((s) => schemes.includes(s.scheme));
+    if (chosen.length === 0) throw new Error("Choose at least one scheme");
+    return { index, name, owner, schemes: chosen };
   } finally {
     wipeKeys(keys);
   }
+}
+
+// A deployed wallet's schemes, from its schemes hash: the one subset of the seed's public keys (in SCHEMES order)
+// that hashes to it. Only keys from the seed are tried, so a node can't slip in someone else's; undefined before
+// deployment, or if no subset matches.
+export async function recoverSchemes(network: Network, owner: string, all: Account["schemes"]): Promise<Account["schemes"] | undefined> {
+  const address = walletAddress(owner);
+  if ((await rpc<string>(network.rpcUrl, "eth_getCode", [address, "latest"])) === "0x") return undefined;
+  const onchain = await onchainSchemesHash(network, address);
+  for (let mask = 1; mask < 1 << all.length; mask++) {
+    const subset = all.filter((_, i) => mask & (1 << i));
+    if (schemesHash(subset) === onchain) return subset;
+  }
+  return undefined;
 }
 
 // A scheme's public key, as its verifier takes it, from its signing key: for ECDSA, the address.
@@ -38,12 +65,41 @@ export async function publicKeyOf(scheme: Scheme, keys: SigningKeys): Promise<st
   return hex(scheme === "falcon" ? await falconPublicKey(keys.falcon!) : await sphincsPublicKey(keys.sphincs!));
 }
 
+// Saves the account under its own key, and counts it if it's new. Only adding an account writes the count.
 export async function saveAccount(account: Account): Promise<void> {
-  await chrome.storage.local.set({ [KEY]: account });
+  const { index, ...stored } = account;
+  await chrome.storage.local.set({ [keyOf("account", index)]: stored });
+  if (index >= (await accountCount())) await chrome.storage.local.set({ [COUNT_KEY]: index + 1 });
 }
 
-export async function loadAccount(): Promise<Account | undefined> {
-  return (await chrome.storage.local.get(KEY))[KEY] as Account | undefined;
+export async function loadAccount(index = 0): Promise<Account | undefined> {
+  const key = keyOf("account", index);
+  const stored = (await chrome.storage.local.get(key))[key] as Omit<Account, "index"> | undefined;
+  return stored && { index, ...stored, name: stored.name ?? `Account ${index + 1}` };
+}
+
+export async function accountCount(): Promise<number> {
+  const count = (await chrome.storage.local.get(COUNT_KEY))[COUNT_KEY] as number | undefined;
+  return count ?? ((await loadAccount(0)) ? 1 : 0); // a wallet from before multiple accounts has one
+}
+
+export async function listAccounts(): Promise<Account[]> {
+  const accounts: Account[] = [];
+  const count = await accountCount();
+  for (let i = 0; i < count; i++) {
+    const account = await loadAccount(i);
+    if (account) accounts.push(account);
+  }
+  return accounts;
+}
+
+export async function selectedAccount(): Promise<number> {
+  const index = (await chrome.storage.local.get(SELECTED_KEY))[SELECTED_KEY] as number | undefined;
+  return index !== undefined && index < (await accountCount()) ? index : 0;
+}
+
+export async function selectAccount(index: number): Promise<void> {
+  await chrome.storage.local.set({ [SELECTED_KEY]: index });
 }
 
 const SCHEMES_HASH = toFunctionSelector("schemesHash()");
@@ -61,26 +117,27 @@ async function onchainSchemesHash(network: Network, address: string): Promise<st
   return rpc<string>(network.rpcUrl, "eth_call", [{ to: address, data: SCHEMES_HASH }, "latest"]);
 }
 
-// A scheme change that was sent but may not be mined yet.
-export async function savePendingSchemes(schemes: Account["schemes"]): Promise<void> {
-  await chrome.storage.local.set({ [PENDING_KEY]: schemes });
+// A scheme change that was sent but may not be mined yet, per account.
+export async function savePendingSchemes(index: number, schemes: Account["schemes"]): Promise<void> {
+  await chrome.storage.local.set({ [keyOf("pendingSchemes", index)]: schemes });
 }
 
-export async function clearPendingSchemes(): Promise<void> {
-  await chrome.storage.local.set({ [PENDING_KEY]: null });
+export async function clearPendingSchemes(index: number): Promise<void> {
+  await chrome.storage.local.set({ [keyOf("pendingSchemes", index)]: null });
 }
 
 // The stored account, after adopting a pending scheme change the chain now has. A change is only saved once mined,
 // and a popup's code stops when it closes, so a change mined after its popup closed is caught up here.
-export async function syncAccount(network: Network): Promise<Account | undefined> {
-  const account = await loadAccount();
-  const pending = (await chrome.storage.local.get(PENDING_KEY))[PENDING_KEY] as Account["schemes"] | null | undefined;
+export async function syncAccount(network: Network, index: number): Promise<Account | undefined> {
+  const account = await loadAccount(index);
+  const key = keyOf("pendingSchemes", index);
+  const pending = (await chrome.storage.local.get(key))[key] as Account["schemes"] | null | undefined;
   if (!account || !pending) return account;
   const onchain = await onchainSchemesHash(network, walletAddress(account.owner));
   if (onchain !== schemesHash(pending)) return account; // not mined (yet), or it failed
-  const updated = { owner: account.owner, schemes: pending };
+  const updated = { ...account, schemes: pending };
   await saveAccount(updated);
-  await clearPendingSchemes();
+  await clearPendingSchemes(index);
   return updated;
 }
 

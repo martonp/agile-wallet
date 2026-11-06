@@ -1,6 +1,9 @@
 import { beforeEach, expect, test } from "vitest";
 import type { SigningKeys } from "./derive";
-import { createWallet, hasWallet, withSigningKeys } from "./keyring";
+import { bytesToHex } from "@noble/hashes/utils.js";
+import { listAccounts, loadAccount, selectedAccount } from "./account";
+import { ecdsaAddress } from "./ecdsa";
+import { addAccount, createWallet, hasWallet, withSigningKeys } from "./keyring";
 import { generateEntropy } from "./mnemonic";
 import { WrongPasswordError } from "./vault";
 
@@ -51,4 +54,18 @@ test("rejects a wrong password without calling sign", async () => {
   let called = false;
   await expect(withSigningKeys("nope", ["ecdsa"], () => (called = true))).rejects.toBeInstanceOf(WrongPasswordError);
   expect(called).toBe(false);
+});
+
+test("adds accounts from the same seed, each with its own keys, and selects the new one", async () => {
+  await createWallet("pw", generateEntropy(), ["ecdsa"]);
+  const added = await addAccount("pw", "Savings", ["ecdsa"]);
+  expect(added).toMatchObject({ index: 1, name: "Savings" });
+  expect(await selectedAccount()).toBe(1);
+  expect((await listAccounts()).map((a) => a.name)).toEqual(["Account 1", "Savings"]);
+
+  // Signing for account 1 derives account 1's keys: their address is its owner, not account 0's.
+  const address = (keys: SigningKeys) => `0x${bytesToHex(ecdsaAddress(keys.ecdsa!))}`;
+  expect(await withSigningKeys("pw", ["ecdsa"], address, 1)).toBe(added.owner);
+  expect(await withSigningKeys("pw", ["ecdsa"], address, 0)).toBe((await loadAccount(0))!.owner);
+  await expect(addAccount("wrong", "Other", ["ecdsa"])).rejects.toThrow(WrongPasswordError);
 });

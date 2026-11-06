@@ -202,14 +202,14 @@ export async function changeSchemes(password: string, account: Account, next: Sc
         schemes.push({ scheme, publicKey: existing ? existing.publicKey : await publicKeyOf(scheme, keys) });
       }
       // Remembered before sending: if the popup closes before the change is mined, syncAccount adopts it later.
-      await savePendingSchemes(schemes);
+      await savePendingSchemes(account.index, schemes);
       return { type: "setSchemes", schemes };
     },
     onProgress,
   );
   if (sent.ok) {
-    await saveAccount({ owner: account.owner, schemes });
-    await clearPendingSchemes();
+    await saveAccount({ ...account, schemes });
+    await clearPendingSchemes(account.index);
   }
   return sent;
 }
@@ -225,15 +225,24 @@ async function submit(
 ): Promise<Sent> {
   const network = await loadNetwork();
   const ctx = await transferContext(network, account);
-  const needed = [...new Set<Scheme>([...account.schemes.map((s) => s.scheme), ...extraKeys, ...(ctx.deployed ? [] : ["ecdsa" as const])])];
+  // ECDSA always: it is also the check that these keys are this account's.
+  const needed = [...new Set<Scheme>(["ecdsa", ...account.schemes.map((s) => s.scheme), ...extraKeys])];
 
-  const signed = await withSigningKeys(password, needed, async (keys) => {
-    const action = await plan(keys);
-    const required = requiredSchemes(account, action);
-    const unsigned = buildTransaction(ctx, action, fixedLimits(account, ctx.deployed, action));
-    await onProgress({ type: "signers", signers: signers(unsigned, required) });
-    return signTransaction(unsigned, required, keys, onProgress);
-  });
+  const signed = await withSigningKeys(
+    password,
+    needed,
+    async (keys) => {
+      if ((await publicKeyOf("ecdsa", keys)).toLowerCase() !== account.owner.toLowerCase()) {
+        throw new Error("These keys aren't this account's: its owner doesn't match");
+      }
+      const action = await plan(keys);
+      const required = requiredSchemes(account, action);
+      const unsigned = buildTransaction(ctx, action, fixedLimits(account, ctx.deployed, action));
+      await onProgress({ type: "signers", signers: signers(unsigned, required) });
+      return signTransaction(unsigned, required, keys, onProgress);
+    },
+    account.index,
+  );
 
   await onProgress({ type: "sending" });
   const hash = tx.txHash(PROFILE, signed);

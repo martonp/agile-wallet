@@ -13,6 +13,12 @@ test("ECDSA follows BIP-32 m/44'/60'/a'/0/i", () => {
   expect(bytesToHex(ecdsa!)).toBe("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80");
 });
 
+test("accounts are the hardened account level, m/44'/60'/a'/0/0", () => {
+  // cast wallet private-key --mnemonic "test … junk" --mnemonic-derivation-path "m/44'/60'/1'/0/0"
+  const { ecdsa } = deriveSigningKeys(seed, ["ecdsa"], 1);
+  expect(bytesToHex(ecdsa!)).toBe("7797c0f3db8b946604ec2039dfd9763e4ffdc53174342a2ed9b14fa3eda666a5");
+});
+
 test("Falcon and SPHINCS+ sub-seeds are HMAC-SHA512 prefixes with big-endian a and i", () => {
   const keys = deriveSigningKeys(seed, ["falcon", "sphincs"], 1, 2);
   const msg = (label: string) => new Uint8Array([...new TextEncoder().encode(`agile-wallet/${label}/`), 0, 0, 0, 1, 0, 0, 0, 2]);
