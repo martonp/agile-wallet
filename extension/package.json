@@ -7,7 +7,8 @@
     "build": "tsc --noEmit && vite build",
     "watch": "vite build --watch --mode development",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:sphincs": "cargo build --release --target wasm32-unknown-unknown --manifest-path sphincs-wasm/Cargo.toml && cp sphincs-wasm/target/wasm32-unknown-unknown/release/agile_sphincs_wasm.wasm src/wallet/sphincs.wasm"
   },
   "dependencies": {
     "@noble/curves": "^2.4.0",
