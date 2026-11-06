@@ -23,11 +23,24 @@ wallet's VERIFY frame checks each signature with its verifier, then approves the
 
 **Verifiers.** Every scheme has an `IVerifier` adapter in `contracts/src`:
 
-| Scheme | Verifies with |
-|---|---|
-| ECDSA | `ecrecover` |
-| Falcon-512 | ZKNOX `falcon8` |
-| SPHINCS- C13 | nconsigny's `SphincsC13Asm` |
+| Scheme | Verifies with | EVM gas per verification |
+|---|---|---|
+| ECDSA | `ecrecover` | ~5k |
+| Falcon-512 | ZKNOX `falcon8` | 590k–635k |
+| SPHINCS- C13 | nconsigny's `SphincsC13Asm` | 97k |
+
+## The Virtual Precompile Rule
+
+The canonical EIP-8141 mempool limits a transaction's validation to `MAX_VERIFY_GAS` (100,000 gas).
+One Falcon or SPHINCS- verification uses that up on its own, while a native precompile would cost a
+few thousand (EIP-8052 prices Falcon at 3,000). VPR is the canonical mempool with one change: calls
+to listed verifier functions count at their precompile price instead of their EVM cost. The extra
+allowance belongs to the verification code, which is the same for every sender, so nobody needs to
+stake. The spec is [`docs/VPR.md`](docs/VPR.md).
+
+The rule runs in our fork of the alt-mempool sidecar (`sidecar/`). It needs ethrex to report the gas
+of each call in its trace ([martonp/ethrex](https://github.com/martonp/ethrex), branch
+`vpr-call-gas`); until that is deployed, the sidecar substitutes measured costs.
 
 ## Repository
 
@@ -35,8 +48,9 @@ wallet's VERIFY frame checks each signature with its verifier, then approves the
 |---|---|
 | `contracts/` | Foundry: verifiers, `AgileWallet`, factory, deploy script |
 | `extension/` | Chrome MV3 extension (React, Vite); see its README |
-| `sidecar/` | Alt-mempool sidecar fork |
+| `sidecar/` | Alt-mempool sidecar fork with the VPR rule |
 | `scripts/` | Devnet scripts: verifier gas measurement, end-to-end transaction |
+| `docs/VPR.md` | The VPR spec |
 
 ## Running the demo
 
@@ -57,5 +71,20 @@ Each step starts from the repository root.
 # 4. A wallet transaction through it
 (cd scripts && npm install && FUNDER_KEY=$FUNDED_KEY SCHEMES=sphincs node send-wallet-tx.mjs)
 ```
+
+## Status
+
+- On a local devnet, a SPHINCS- wallet's first transaction (deploy and transfer) and a second
+  transfer were admitted through VPR and mined. The canonical mempool would reject both.
+- Wallets with Falcon don't fit yet: work outside the verifiers (deployment, the wallet's own
+  checks) must stay under 100,000 gas, and with Falcon's 1 KB key it comes to about 111,000.
+- The extension creates, stores and unlocks the wallet and signs with ECDSA and Falcon; it does
+  not send transactions yet.
+- The sidecar matches verifiers by their configured addresses; it does not yet check code hashes
+  or function selectors, and its base rules are the standard alt-mempool's rather than exactly the
+  canonical mempool's.
+- falcon.js never seeds its signing randomness, a known prototype limitation.
+- The cryptography (ZKNOX Falcon, SPHINCS-, falcon.js) is research code and unaudited. Don't use
+  this with real funds.
 
 How AI was used: [`AI_USAGE.md`](AI_USAGE.md).
