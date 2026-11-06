@@ -136,6 +136,43 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 13px;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+}
+
+.status-active,
+.status-done {
+  color: var(--text);
+}
+
+.status-failed {
+  color: var(--danger);
+}
+
+.spin {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .warning {
   padding: 10px 12px;
   border-radius: 8px;

@@ -2,17 +2,15 @@ import { useEffect, useState } from "react";
 import { type Address, isAddress, parseEther } from "viem";
 import { SchemeChip } from "../components/SchemeChip";
 import { Header } from "../components/Header";
+import { SendProgress, type Tracker } from "../components/SendProgress";
 import { shortAddress } from "../mock";
 import { type Account, type AccountState, accountState, formatEth, loadAccount } from "../../wallet/account";
 import { loadNetwork } from "../../wallet/network";
-import { type Sent, type Step, sendTransfer } from "../../wallet/transaction";
+import { type Progress, type Sent, sendTransfer } from "../../wallet/transaction";
 import { WrongPasswordError } from "../../wallet/vault";
 
-const STEP_TEXT: Record<Step, string> = {
-  signing: "Signing…",
-  sending: "Sending to the VPR mempool…",
-  mining: "Waiting for a block…",
-};
+// Resolves once the browser has painted: a signer then blocks the thread only after its "signing…" is on screen.
+const nextPaint = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
 
 export function Send({ onBack }: { onBack: () => void }) {
   const [account, setAccount] = useState<Account>();
@@ -20,7 +18,8 @@ export function Send({ onBack }: { onBack: () => void }) {
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
   const [password, setPassword] = useState("");
-  const [step, setStep] = useState<Step>();
+  const [busy, setBusy] = useState(false);
+  const [tracker, setTracker] = useState<Tracker>();
   const [sent, setSent] = useState<Sent>();
   const [error, setError] = useState("");
 
@@ -46,26 +45,45 @@ export function Send({ onBack }: { onBack: () => void }) {
     return value;
   }
 
+  async function onProgress(progress: Progress) {
+    switch (progress.type) {
+      case "signers":
+        return setTracker({ signers: progress.signers, ms: [], current: -1, phase: "signing" });
+      case "signing":
+        setTracker((t) => t && { ...t, current: progress.index });
+        return nextPaint();
+      case "signed":
+        return setTracker((t) => t && { ...t, ms: Object.assign([...t.ms], { [progress.index]: progress.ms }) });
+      case "sending":
+      case "mining":
+        return setTracker((t) => t && { ...t, phase: progress.type });
+    }
+  }
+
   async function signAndSend() {
     const value = check();
     if (typeof value === "string") return setError(value);
     if (!account) return;
     setError("");
     setSent(undefined);
+    setTracker(undefined);
+    setBusy(true);
     try {
-      setSent(await sendTransfer(password, account, { to: to as Address, value }, setStep));
+      const result = await sendTransfer(password, account, { to: to as Address, value }, onProgress);
+      setSent(result);
+      setTracker((t) => t && { ...t, phase: "done", block: result.block, ok: result.ok });
       setTo("");
       setAmount("");
       if (state) setState(await accountState(await loadNetwork(), account).catch(() => state));
     } catch (e) {
+      setTracker((t) => t && { ...t, failed: true });
       setError(e instanceof WrongPasswordError ? "Wrong password. Try again." : e instanceof Error ? e.message : String(e));
     } finally {
       setPassword("");
-      setStep(undefined);
+      setBusy(false);
     }
   }
 
-  const busy = step !== undefined;
   return (
     <div className="screen">
       <Header title="Send ETH" onBack={onBack} />
@@ -81,14 +99,18 @@ export function Send({ onBack }: { onBack: () => void }) {
           {state && !state.deployed && " · this transaction also deploys the wallet"}
         </p>
       </div>
-      <div className="panel">
-        <p className="label">Signed with</p>
-        <div className="chips">
-          {account?.schemes.map((s) => (
-            <SchemeChip key={s.scheme} scheme={s.scheme} />
-          ))}
+      {tracker ? (
+        <SendProgress tracker={tracker} />
+      ) : (
+        <div className="panel">
+          <p className="label">Signed with</p>
+          <div className="chips">
+            {account?.schemes.map((s) => (
+              <SchemeChip key={s.scheme} scheme={s.scheme} />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
       <div className="spacer">
         <p className="label">Password</p>
         <input className="field" type="password" value={password} disabled={busy} onChange={(e) => setPassword(e.target.value)} />
@@ -100,7 +122,7 @@ export function Send({ onBack }: { onBack: () => void }) {
         </p>
       )}
       <button className="btn btn-primary" disabled={busy || !password} onClick={signAndSend}>
-        {step ? STEP_TEXT[step] : "Sign and send"}
+        {busy ? "Sending…" : "Sign and send"}
       </button>
     </div>
   );
