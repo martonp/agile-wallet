@@ -1,13 +1,14 @@
-import { IconLock } from "@tabler/icons-react";
+import { Dodger } from "../components/Dodger";
 
 export function Unlock({ onUnlock, onForgot }: { onUnlock: () => void; onForgot: () => void }) {
   return (
-    <div className="screen" style={{ justifyContent: "center", textAlign: "center" }}>
-      <IconLock size={28} color="var(--faint)" style={{ alignSelf: "center" }} aria-hidden />
-      <div className="header" style={{ justifyContent: "center", fontSize: 16 }}>
-        Welcome back
+    <div className="screen" style={{ textAlign: "center" }}>
+      <div className="brand">
+        <h1 className="wordmark">Agile Wallet</h1>
+        <p className="tagline">Welcome back</p>
       </div>
-      <p className="hint">Enter your password to unlock your wallet.</p>
+      <Dodger />
+      <p className="hint spacer">Enter your password to unlock your wallet.</p>
       <input className="field" type="password" autoFocus />
       <button className="btn btn-primary" onClick={onUnlock}>
         Unlock
