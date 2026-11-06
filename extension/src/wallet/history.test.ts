@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { clearAccounts } from "./account";
-import { type HistoryEntry, addEntry, loadHistory, settleEntry, syncHistory } from "./history";
+import { type HistoryEntry, addEntry, loadHistory, settleEntry, signedSinceRaised, syncHistory } from "./history";
 import { LOCAL_DEVNET } from "./network";
 
 // In-memory stand-in for chrome.storage.local.
@@ -76,4 +76,17 @@ test("fills in the fee of an entry settled before fees were recorded", async () 
     new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: { blockNumber: "0xfa3", gasUsed: "0x10", effectiveGasPrice: "0x2", frameReceipts: [{ status: "0x1" }] } })),
   );
   expect((await syncHistory(LOCAL_DEVNET, 0))[0]).toMatchObject({ status: "mined", block: 4003, fee: "32" });
+});
+
+test("signedSinceRaised: only a mined transaction the backup signed after the raise counts", () => {
+  const raisedAt = 1_000; // block timestamp, seconds
+  const deploy = { ...entry("0x1"), time: 900_000, deploys: true, signers: ["ecdsa", "falcon", "sphincs"] as HistoryEntry["signers"], status: "mined" as const };
+  expect(signedSinceRaised([deploy], "sphincs", raisedAt)).toBe(false); // set the safeguard before the raise
+  const after = { ...entry("0x2"), time: 1_000_500, signers: ["ecdsa", "falcon", "sphincs"] as HistoryEntry["signers"], status: "mined" as const };
+  expect(signedSinceRaised([after, deploy], "sphincs", raisedAt)).toBe(true);
+  expect(signedSinceRaised([{ ...after, time: 1_000_000 }], "sphincs", raisedAt)).toBe(true); // sent at the raise's timestamp
+  for (const status of ["pending", "failed", "dropped"] as const) {
+    expect(signedSinceRaised([{ ...after, status }], "sphincs", raisedAt)).toBe(false);
+  }
+  expect(signedSinceRaised([{ ...after, signers: ["ecdsa"] }], "sphincs", raisedAt)).toBe(false);
 });

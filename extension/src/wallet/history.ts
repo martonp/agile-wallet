@@ -49,6 +49,14 @@ export async function settleEntry(index: number, hash: string, receipt: Receipt)
   await saveHistory(index, entries.map((e) => (e.hash === hash ? { ...e, ...settled } : e)));
 }
 
+// Whether the wallet has had a transaction that `backup` signed mined since a signal was raised at `brokenAt` (its
+// block timestamp, in seconds): from then on the backup visibly signs, so the raise needs no more pointing out. The
+// first transaction's backup signature, for setting the safeguard, predates the raise and doesn't count. Only mined
+// ones count: a pending entry whose popup closed is never marked dropped if the mempool lets it go.
+export function signedSinceRaised(history: HistoryEntry[], backup: Scheme, brokenAt: number): boolean {
+  return history.some((e) => e.status === "mined" && e.time >= brokenAt * 1000 && e.signers.includes(backup));
+}
+
 // Marks a pending entry dropped: the mempool evicted it, so it will never be mined.
 export async function dropEntry(index: number, hash: string): Promise<void> {
   const entries = await loadHistory(index);

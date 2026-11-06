@@ -7,7 +7,7 @@ import { Header } from "../components/Header";
 import { shortAddress } from "../format";
 import { SCHEMES, SCHEME_INFO } from "../schemes";
 import { type Account as AccountData, type AccountState, accountState, formatEth, loadAccount, raisedRules, syncAccount } from "../../wallet/account";
-import { type HistoryEntry, syncHistory } from "../../wallet/history";
+import { type HistoryEntry, signedSinceRaised, syncHistory } from "../../wallet/history";
 import { SIGNALS, loadNetwork } from "../../wallet/network";
 
 type Props = {
@@ -132,19 +132,22 @@ export function Account({ index, notice, onSelect, onAddAccount, onSend, onRecei
         raisedSignals.map((s) => {
           const broken = SCHEME_INFO[s.breaks].label;
           const rule = raised.find((r) => r.signal.toLowerCase() === s.address.toLowerCase());
-          if (rule) {
-            return (
-              <div key={s.address} className="warning">
-                {broken} was signalled broken: {SCHEME_INFO[rule.scheme].label} now also signs every transaction.
-              </div>
-            );
-          }
-          // The owner key fixes an undeployed wallet's address, and it is ECDSA: whoever breaks ECDSA can deploy it first.
+          // The owner key fixes an undeployed wallet's address, and it is ECDSA: whoever breaks ECDSA can deploy it first,
+          // whatever safeguards are saved here.
           if (!state.deployed && s.breaks === "ecdsa") {
             return (
               <div key={s.address} className="warning">
                 {broken} was signalled broken and this wallet isn't deployed, so a safeguard can't protect it. Move its
                 funds.
+              </div>
+            );
+          }
+          if (rule) {
+            // Once a transaction since the raise has carried the backup's signature, the change speaks for itself.
+            if (signedSinceRaised(history, rule.scheme, state.signals[s.address.toLowerCase()])) return null;
+            return (
+              <div key={s.address} className="warning">
+                {broken} was signalled broken: {SCHEME_INFO[rule.scheme].label} now also signs every transaction.
               </div>
             );
           }
