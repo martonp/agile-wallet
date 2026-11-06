@@ -17,6 +17,7 @@ beforeEach(() => {
 
 test("the contracts are the devnet deployment's", () => {
   expect(CONTRACTS.factory).toBe(deployment.factory);
+  expect(CONTRACTS.implementation).toBe(deployment.implementation);
   expect(CONTRACTS.falconVerifier).toBe(deployment.falconVerifier);
   expect(CONTRACTS.sphincsVerifier).toBe(deployment.sphincsVerifier);
 });

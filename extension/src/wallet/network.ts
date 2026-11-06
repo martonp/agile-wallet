@@ -17,6 +17,7 @@ export const LOCAL_DEVNET: Network = {
 // proxy, so they have these addresses on every chain they are deployed to; a redeploy changes them with the code.
 export const CONTRACTS = {
   factory: "0xEF2A1f2C46BC11d36bCEb07D99F4e358fB11Af95",
+  implementation: "0x699cB3B36e172b1C4438e65438F4bf33Ee69966c", // AgileWallet, which every wallet's proxy calls
   falconVerifier: "0xbcceb50D9510790828274Ce346D7013eb747c969",
   sphincsVerifier: "0x24227085c65D630F8D0465037CC8924E3E767A88",
 };

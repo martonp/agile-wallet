@@ -1,5 +1,5 @@
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { type Hex, encodeAbiParameters, keccak256, toFunctionSelector } from "viem";
+import { type Hex, concat, encodeAbiParameters, getContractAddress, keccak256, pad, toFunctionSelector } from "viem";
 import { type SigningKeys, deriveSigningKeys, wipeKeys } from "./derive";
 import { ecdsaAddress } from "./ecdsa";
 import { falconPublicKey } from "./falcon";
@@ -46,7 +46,6 @@ export async function loadAccount(): Promise<Account | undefined> {
   return (await chrome.storage.local.get(KEY))[KEY] as Account | undefined;
 }
 
-const WALLET_ADDRESS = toFunctionSelector("walletAddress(address)");
 const SCHEMES_HASH = toFunctionSelector("schemesHash()");
 
 // keccak256(abi.encode(Scheme[])): what AgileWallet stores for its scheme list.
@@ -77,7 +76,7 @@ export async function syncAccount(network: Network): Promise<Account | undefined
   const account = await loadAccount();
   const pending = (await chrome.storage.local.get(PENDING_KEY))[PENDING_KEY] as Account["schemes"] | null | undefined;
   if (!account || !pending) return account;
-  const onchain = await onchainSchemesHash(network, await walletAddress(network, account.owner));
+  const onchain = await onchainSchemesHash(network, walletAddress(account.owner));
   if (onchain !== schemesHash(pending)) return account; // not mined (yet), or it failed
   const updated = { owner: account.owner, schemes: pending };
   await saveAccount(updated);
@@ -85,11 +84,17 @@ export async function syncAccount(network: Network): Promise<Account | undefined
   return updated;
 }
 
-// AgileWalletFactory.walletAddress(owner): the CREATE2 address, known before deployment.
-export async function walletAddress(network: Network, owner: string): Promise<string> {
-  const data = WALLET_ADDRESS + owner.slice(2).toLowerCase().padStart(64, "0");
-  const result = await rpc<string>(network.rpcUrl, "eth_call", [{ to: CONTRACTS.factory, data }, "latest"]);
-  return `0x${result.slice(-40)}`;
+// The ERC-1167 proxy that AgileWalletFactory deploys for every wallet.
+const PROXY_CODE = concat([
+  "0x3d602d80600a3d3981f3363d3d373d3d3d363d73",
+  CONTRACTS.implementation as Hex,
+  "0x5af43d82803e903d91602b57fd5bf3",
+]);
+
+// AgileWalletFactory.walletAddress(owner), computed here rather than asked of the node, so a lying RPC can't hand
+// out someone else's address: CREATE2 by the factory, salted with the owner, of the proxy code.
+export function walletAddress(owner: string): string {
+  return getContractAddress({ opcode: "CREATE2", from: CONTRACTS.factory as Hex, salt: pad(owner as Hex), bytecode: PROXY_CODE });
 }
 
 export interface AccountState {
@@ -100,7 +105,7 @@ export interface AccountState {
 }
 
 export async function accountState(network: Network, account: Account): Promise<AccountState> {
-  const address = await walletAddress(network, account.owner);
+  const address = walletAddress(account.owner);
   const [balance, code] = await Promise.all([
     rpc<string>(network.rpcUrl, "eth_getBalance", [address, "latest"]),
     rpc<string>(network.rpcUrl, "eth_getCode", [address, "latest"]),
