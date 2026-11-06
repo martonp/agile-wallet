@@ -53,10 +53,11 @@ of each call in its trace ([martonp/ethrex](https://github.com/martonp/ethrex), 
 
 | Path | |
 |---|---|
-| `contracts/` | Foundry: verifiers, `AgileWallet`, factory, deploy script |
+| `contracts/` | Foundry: verifiers, `AgileWallet`, factory, `BreakSignal`, deploy script |
 | `extension/` | Chrome MV3 extension (React, Vite); see its README |
 | `sidecar/` | Alt-mempool sidecar fork with the VPR rule |
 | `scripts/` | Devnet scripts: verifier gas measurement, end-to-end transaction, mempool ID |
+| `signal-ui/` | The cryptographer's page for raising a break signal |
 | `docs/VPR.md` | The VPR spec |
 
 ## Running the demo
@@ -78,6 +79,18 @@ Each step starts from the repository root.
   --p2p.port 4338 --p2p.enrPort 4338 --redirectRpc --executor.bundlingMode auto)
 # 4. A wallet transaction through it
 (cd scripts && npm install && FUNDER_KEY=$FUNDED_KEY SCHEMES=sphincs node send-wallet-tx.mjs)
+# 5. Break signals: an ECDSA wallet subscribes with SPHINCS- as its backup, then sends with ECDSA alone
+(cd scripts && SEED=demo-signal SCHEMES=ecdsa FUNDER_KEY=$FUNDED_KEY node send-wallet-tx.mjs \
+  && SEED=demo-signal SCHEMES=ecdsa SET_RULES=sphincs node send-wallet-tx.mjs \
+  && SEED=demo-signal SCHEMES=ecdsa RULES=sphincs node send-wallet-tx.mjs)
+# 6. The cryptographer raises the signal. It is Anvil's test account #1 (CRYPTOGRAPHER_KEY: the well-known key
+#    Anvil prints for it); fund it first. Then either use signal-ui/ (npx serve signal-ui, and connect a browser
+#    wallet holding that key) or a terminal. It can't be undone: from then on the wallet's transactions also need
+#    SPHINCS- (step 5's last command signs for it).
+cast send 0x70997970C51812dc3A010C7d01b50e0d17dc79C8 --value 1ether --private-key $FUNDED_KEY \
+  --rpc-url http://127.0.0.1:8545 --legacy
+cast send 0x108c7aD6Dd81EA131A761B3Db9F817056D26941c "signalBroken()" --private-key $CRYPTOGRAPHER_KEY \
+  --rpc-url http://127.0.0.1:8545 --legacy
 ```
 
 ## Status

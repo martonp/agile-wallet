@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Break signal</title>
+    <!--
+      The cryptographer's page for a BreakSignal (contracts/src/BreakSignal.sol): shows whether it has been raised,
+      and lets its cryptographer raise it with a browser wallet. Serve it over http (npx serve signal-ui): browser
+      wallets don't inject into file:// pages.
+    -->
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fafafa;
+        --text: #1a1a1a;
+        --muted: #6b6b6b;
+        --panel: #ffffff;
+        --line: #e2e2e2;
+        --danger: #b42318;
+        --danger-bg: #fdecea;
+        --danger-button: #b42318;
+        --ok-bg: #e8f5ec;
+        --ok-text: #1e6b3a;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #141414;
+          --text: #ededed;
+          --muted: #9a9a9a;
+          --panel: #1e1e1e;
+          --line: #333333;
+          --danger: #ff8a7a;
+          --danger-bg: #3b1714;
+          --danger-button: #a3271c;
+          --ok-bg: #12301d;
+          --ok-text: #8ad8a4;
+        }
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font: 15px/1.5 system-ui, sans-serif;
+      }
+      main {
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 32px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .mono {
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+      .status {
+        align-self: flex-start;
+        padding: 3px 10px;
+        border-radius: 999px;
+        font-size: 13px;
+        background: var(--ok-bg);
+        color: var(--ok-text);
+      }
+      .status.raised {
+        background: var(--danger-bg);
+        color: var(--danger);
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      input {
+        font: inherit;
+        color: inherit;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 6px 8px;
+      }
+      button {
+        font: inherit;
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: inherit;
+        cursor: pointer;
+      }
+      button.danger {
+        background: var(--danger-button);
+        border-color: var(--danger-button);
+        color: #fff;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .error {
+        color: var(--danger);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Break signal</h1>
+      <p class="muted">
+        Wallets subscribed to this signal require their backup scheme once it is raised. Raising it can't be undone.
+      </p>
+
+      <div class="panel">
+        <strong id="description">…</strong>
+        <span id="status" class="status">…</span>
+        <span class="muted">Cryptographer</span>
+        <span id="cryptographer" class="mono">…</span>
+      </div>
+
+      <div class="panel">
+        <label>Node RPC <input id="rpc" value="http://127.0.0.1:8545" /></label>
+        <label>Signal address <input id="address" class="mono" value="0x108c7aD6Dd81EA131A761B3Db9F817056D26941c" /></label>
+        <button id="refresh">Refresh</button>
+      </div>
+
+      <div class="panel">
+        <span id="account" class="muted">Not connected.</span>
+        <button id="connect">Connect wallet</button>
+        <button id="signal" class="danger" disabled>Signal that it is broken</button>
+        <span id="error" class="error"></span>
+      </div>
+    </main>
+
+    <script type="module">
+      import { createPublicClient, createWalletClient, custom, http } from "https://esm.sh/viem@2.57.7";
+
+      const ABI = [
+        { type: "function", name: "description", stateMutability: "view", inputs: [], outputs: [{ type: "string" }] },
+        { type: "function", name: "cryptographer", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+        { type: "function", name: "brokenAt", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+        { type: "function", name: "signalBroken", stateMutability: "nonpayable", inputs: [], outputs: [] },
+      ];
+      const $ = (id) => document.getElementById(id);
+      let signal = {}; // what the contract at signal.address says
+      let account; // the connected address
+      let sending = false;
+
+      const client = () => createPublicClient({ transport: http($("rpc").value) });
+      const address = () => $("address").value.trim();
+
+      async function refresh() {
+        $("error").textContent = "";
+        signal = {}; // nothing to signal until this address has been read
+        update();
+        try {
+          const read = (functionName) => client().readContract({ address: address(), abi: ABI, functionName });
+          const [description, cryptographer, brokenAt] = await Promise.all([read("description"), read("cryptographer"), read("brokenAt")]);
+          signal = { address: address(), description, cryptographer, brokenAt };
+          $("description").textContent = description;
+          $("cryptographer").textContent = cryptographer;
+          $("status").textContent = brokenAt === 0n ? "Not signalled" : `Signalled on ${new Date(Number(brokenAt) * 1000).toLocaleString()}`;
+          $("status").classList.toggle("raised", brokenAt !== 0n);
+        } catch (e) {
+          $("error").textContent = `Can't read the signal: ${e.shortMessage ?? e.message}`;
+        }
+        update();
+      }
+
+      function update() {
+        const isCryptographer = account && signal.cryptographer && account.toLowerCase() === signal.cryptographer.toLowerCase();
+        $("account").textContent = !account
+          ? "Not connected."
+          : isCryptographer
+            ? `Connected as the cryptographer, ${account}.`
+            : `Connected as ${account}, which isn't this signal's cryptographer.`;
+        $("signal").disabled = sending || !isCryptographer || signal.brokenAt !== 0n;
+      }
+
+      $("refresh").onclick = refresh;
+      $("address").oninput = $("rpc").oninput = () => {
+        signal = {};
+        update();
+      };
+      window.ethereum?.on?.("accountsChanged", ([a]) => {
+        account = a;
+        update();
+      });
+
+      $("connect").onclick = async () => {
+        $("error").textContent = "";
+        if (!window.ethereum) {
+          $("error").textContent = "No browser wallet found.";
+          return;
+        }
+        try {
+          [account] = await window.ethereum.request({ method: "eth_requestAccounts" });
+        } catch (e) {
+          $("error").textContent = e.message;
+        }
+        update();
+      };
+
+      $("signal").onclick = async () => {
+        if (!confirm(`Signal "${signal.description}"?\n\nThis can't be undone. Every subscribed wallet will need its backup signature from now on.`)) return;
+        $("error").textContent = "";
+        sending = true;
+        update();
+        try {
+          const chainId = await client().getChainId();
+          const chain = { id: chainId, name: "devnet", nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [$("rpc").value] } } };
+          const wallet = createWalletClient({ account, chain, transport: custom(window.ethereum) });
+          await wallet.switchChain({ id: chainId }).catch(() => wallet.addChain({ chain }));
+          const hash = await wallet.writeContract({ address: signal.address, abi: ABI, functionName: "signalBroken" });
+          $("account").textContent = `Sent ${hash}, waiting for a block…`;
+          const receipt = await client().waitForTransactionReceipt({ hash });
+          if (receipt.status === "reverted") throw new Error("The transaction reverted.");
+        } catch (e) {
+          $("error").textContent = e.shortMessage ?? e.message;
+        }
+        sending = false;
+        const error = $("error").textContent;
+        await refresh();
+        $("error").textContent ||= error;
+      };
+
+      refresh();
+    </script>
+  </body>
+</html>
