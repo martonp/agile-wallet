@@ -11,6 +11,7 @@
     "build:sphincs": "cargo build --release --target wasm32-unknown-unknown --manifest-path sphincs-wasm/Cargo.toml && cp sphincs-wasm/target/wasm32-unknown-unknown/release/agile_sphincs_wasm.wasm src/wallet/sphincs.wasm"
   },
   "dependencies": {
+    "@forshtat/hegota-support": "0.0.1",
     "@noble/curves": "^2.4.0",
     "@noble/hashes": "^2.4.0",
     "@scure/bip32": "^2.4.0",
@@ -18,6 +19,7 @@
     "@tabler/icons-react": "^3.50.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
+    "viem": "2.57.7",
     "zknox-falcon": "file:vendor/zknox-falcon"
   },
   "devDependencies": {
