@@ -33,7 +33,7 @@ wallet's VERIFY frame checks each signature with its verifier, then approves the
 
 | Path | |
 |---|---|
-| `contracts/` | Foundry: verifiers, `AgileWallet`, factory |
+| `contracts/` | Foundry: verifiers, `AgileWallet`, factory, deploy script |
 | `extension/` | Chrome MV3 extension (React, Vite); see its README |
 | `sidecar/` | Alt-mempool sidecar fork |
 

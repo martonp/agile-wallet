@@ -12,4 +12,8 @@ optimizer = true
 optimizer_runs = 1000000
 # Tests sign with ZKNOX's falcon.js through node, and read the Keccak-f[1600] helper's runtime.
 ffi = true
-fs_permissions = [{ access = "read", path = "./lib/ETHFALCON/test" }]
+fs_permissions = [
+    { access = "read", path = "./lib/ETHFALCON/test" },
+    { access = "read-write", path = "./deployments" }, # written by script/Deploy.s.sol
+    { access = "read", path = "./out" }, # Deploy.s.sol loads creation code from the artifacts
+]
