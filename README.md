@@ -141,6 +141,18 @@ cast send 0x108c7aD6Dd81EA131A761B3Db9F817056D26941c "signalBroken()" --private-
 The extension (see `extension/README.md`) does the same from a browser: set up the schemes and
 safeguards, send (the first send deploys the wallet), and follow a raised signal.
 
+## Using the wallet
+
+1. **Install.** Build the extension with `cd extension && npm install && npm run build`. In Chrome, open
+   `chrome://extensions`, turn on **Developer mode**, click **Load unpacked** and pick `extension/dist`.
+2. **Connect to a network.** The wallet talks to a Crypto-Agility node (steps 2 and 3 above), by
+   default the local one at `http://127.0.0.1:14338/rpc`. To use another, open the gear icon
+   (**Network**), set the **Crypto-Agility Mempool RPC** URL (and the **Explorer** URL, step 3b), and
+   click **Test connection**, which checks that the node answers and that the contracts are deployed.
+
+Then create a wallet, fund its address, and send: the first send deploys it with the schemes and
+safeguards you choose.
+
 ## Limitations
 
 - **Stand-in gas credit.** The devnet's ethrex doesn't report per-call gas yet, so the sidecar credits a
