@@ -14,8 +14,9 @@ The validation gas limit is:
 credit  =  Σ  max(0, gasUsed(c) − precompileGas(f))
 ```
 
-summed over every call `c` in the validation prefix whose code hash and selector match a listed
-function `f`. `gasUsed(c)` includes the calls `c` makes.
+summed over the first call `c` in the validation prefix to each listed function `f`, matched by
+code hash and selector. Later calls to the same function earn nothing, so the credit is at most one
+verification per listed function. `gasUsed(c)` includes the calls `c` makes.
 
 | Function | Runtime code hash | `precompileGas` |
 |---|---|---|
